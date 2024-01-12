@@ -122,6 +122,10 @@ bool ShenandoahConcurrentGC::collect(GCCause::Cause cause) {
   // Complete marking under STW, and start evacuation
   vmop_entry_final_mark();
 
+  // Final mark might have reclaimed some immediate garbage, kick cleanup to reclaim
+  // the space. This would be the last action if there is nothing to evacuate.
+  entry_cleanup_early();
+
   // Concurrent stack processing
   if (heap->is_evacuation_in_progress()) {
     entry_thread_roots();
@@ -132,10 +136,6 @@ bool ShenandoahConcurrentGC::collect(GCCause::Cause cause) {
     entry_weak_refs();
     entry_weak_roots();
   }
-
-  // Final mark might have reclaimed some immediate garbage, kick cleanup to reclaim
-  // the space. This would be the last action if there is nothing to evacuate.
-  entry_cleanup_early();
 
   {
     ShenandoahHeapLocker locker(heap->lock());
