@@ -122,19 +122,21 @@ bool ShenandoahConcurrentGC::collect(GCCause::Cause cause) {
   // Complete marking under STW, and start evacuation
   vmop_entry_final_mark();
 
+  // Process weak roots that might still point to regions that would be broken by cleanup
+  if (heap->is_concurrent_weak_root_in_progress()) {
+    entry_weak_refs();
+    entry_weak_roots();
+  }
+
   // Final mark might have reclaimed some immediate garbage, kick cleanup to reclaim
-  // the space. This would be the last action if there is nothing to evacuate.
+  // the space. This would be the last action if there is nothing to evacuate.  Note that
+  // weak reference processing needs to finish before we cleanup immediate garbage as weak
+  // referencing may need to examine headers of objects that are only weakly referenced.
   entry_cleanup_early();
 
   // Concurrent stack processing
   if (heap->is_evacuation_in_progress()) {
     entry_thread_roots();
-  }
-
-  // Process weak roots that might still point to regions that would be broken by cleanup
-  if (heap->is_concurrent_weak_root_in_progress()) {
-    entry_weak_refs();
-    entry_weak_roots();
   }
 
   {
