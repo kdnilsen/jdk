@@ -128,6 +128,87 @@ void ShenandoahAdaptiveHeuristics::choose_collection_set_from_regiondata(Shenand
   }
 }
 
+uint ShenandoahAdaptiveHeuristics::get_surge_level() {
+  return _surge_level;
+}
+
+uint ShenandoahAdaptiveHeuristics::should_surge_phase(ShenandoahGCStage stage, double now) {
+  _phase_stats[stage].set_most_recent_start_time(now);
+
+  // If we're already surging within this cycle, do not reduce the surge level
+  uint surge = _surge_level;
+  size_t allocatable = ShenandoahHeap::heap()->free_set()->available();
+  double time_to_finish_gc = 0.0;
+
+  assert (ConcGCThreads * 2 == ParallelGCThreads, "Assume ConcurrentGCThreads is half ParallelGCThreads");
+  if (_previous_cycle_max_surge_level > 1) {
+    // If we required more than minimal surge in previous cycle, continue with a small surge now.  We may still be
+    // catching up
+    if (surge < 1) {
+      surge = 1;
+    }
+  }
+
+  switch (stage) {
+    case ShenandoahGCStage::_num_phases:
+      assert(false, "Should not happen");
+      break;
+    case ShenandoahGCStage::_mark:
+      time_to_finish_gc += _phase_stats[_mark].predict_next();
+    case ShenandoahGCStage::_evac:
+      time_to_finish_gc += _phase_stats[_evac].predict_next();
+    case ShenandoahGCStage::_update:
+      time_to_finish_gc += _phase_stats[_update].predict_next();
+  }
+  double avg_alloc_rate = _allocation_rate.upper_bound(_margin_of_error_sd);
+  double race_odds = (avg_alloc_rate * time_to_finish_gc) / allocatable;
+
+  // To Do: Also consider accelerating consumption of memory
+
+  if (race_odds > 1.75) {
+    surge = 4;
+  } else if (race_odds > 1.5) {
+    if (surge < 3) {
+      surge = 3;
+    }
+  } else if (race_odds > 1.25) {
+    if (surge < 2) {
+      surge = 2;
+    }
+  } else if (race_odds > 1.0) {
+    if (surge < 1) {
+      surge = 1;
+    }
+  }
+  return surge;
+}
+
+void ShenandoahAdaptiveHeuristics::record_phase_end(ShenandoahGCStage phase, double now) {
+  double duration = now - _phase_stats[phase].get_most_recent_start_time();
+  switch (_surge_level) {
+    case 4:
+      duration *= 2.0;          // If we had half the workers, assume we would have required twice the time
+      break;
+    case 3:
+      duration *= 1.75;         // If we had 4/7 the workers, assume we would have required 7/4 the time
+      break;
+    case 2:
+      duration *= 1.5;          // If we had 4/6 the workers, assume we would have required 6/4 the time
+      break;
+    case 1:
+      duration *= 1.25;         // If we had 4/5 the workers, assume we would have required 5/4 the time
+      break;
+    case 0:
+    default:
+      // No adjustment to duration necessary
+      break;
+  }
+  _phase_stats[phase].add_sample(duration);
+  if (phase != ShenandoahGCStage::_update) {
+    _phase_stats[phase + 1].set_most_recent_start_time(now);
+  }
+}
+
 void ShenandoahAdaptiveHeuristics::record_cycle_start() {
   ShenandoahHeuristics::record_cycle_start();
   _allocation_rate.allocation_counter_reset();
@@ -404,4 +485,71 @@ double ShenandoahAllocationRate::instantaneous_rate(double time, size_t allocate
   size_t allocation_delta = (allocated > last_value) ? (allocated - last_value) : 0;
   double time_delta_sec = time - last_time;
   return (time_delta_sec > 0)  ? (allocation_delta / time_delta_sec) : 0;
+}
+
+ShenandoahPhaseTimeEstimator::ShenandoahPhaseTimeEstimator() :
+  _changed(true),
+  _first_index(0),
+  _num_samples(0),
+  _sum_of_samples(0.0),
+  _sum_of_x(0.0),
+  _sum_of_xx(0.0) { }
+
+void ShenandoahPhaseTimeEstimator::add_sample(double sample) {
+  if (_num_samples >= Samples) {
+    _sum_of_samples -= _sample_array[_first_index];
+    _num_samples--;
+    _first_index++;
+    if (_first_index == Samples) {
+      _first_index = 0;
+    }
+  } else {
+    _sum_of_x += _num_samples;
+    double xx = _num_samples * _num_samples;
+    _sum_of_xx += xx;
+  }
+  assert(_num_samples < Samples, "Unexpected overflow of ShenandoahPhaseTimeEstimator samples");
+  assert(_first_index < Samples, "Unexpected overflow");
+
+  _sum_of_samples += sample;
+  _sample_array[(_first_index + _num_samples++) % Samples] = sample;
+  _changed = true;
+}
+
+double ShenandoahPhaseTimeEstimator::predict_next() {
+  if (!_changed) {
+    return _next_prediction;
+  } else {
+    double samples[Samples];
+    double mean = _sum_of_samples / _num_samples;
+    double sum_of_squared_deviations = 0.0;
+    double sum_of_xy = 0.0;
+    for (uint i = 0; i < _num_samples; i++) {
+      uint index = (_first_index + i) % Samples;
+      double sample = _sample_array[index];
+      samples[i] = sample;
+      sum_of_xy = i * sample;
+      double delta = mean - sample;
+      sum_of_squared_deviations += delta * delta;
+    }
+    double standard_deviation = sqrt(sum_of_squared_deviations / _num_samples);
+    double prediction_by_average = mean + standard_deviation;
+    double prediction_by_trend = prediction_by_average;
+    
+    if (_num_samples > 2) {
+      double m = (_num_samples * sum_of_xy - _sum_of_x * _sum_of_samples) / (_num_samples * _sum_of_xx - _sum_of_x * _sum_of_x);
+      double b = (_sum_of_samples - m * _sum_of_x) / _num_samples;
+      sum_of_squared_deviations = 0;
+      for (uint i = 0; i < _num_samples; i++) {
+        double estimated_y = b + m * i;
+        double delta = estimated_y - samples[i];
+        sum_of_squared_deviations = delta * delta;
+      }
+      standard_deviation = sqrt(sum_of_squared_deviations / _num_samples);
+      prediction_by_trend = b + m * _num_samples + standard_deviation;;
+    }
+    _next_prediction = MAX2(prediction_by_average, prediction_by_trend);
+    _changed = false;
+    return _next_prediction;
+  }
 }

@@ -59,6 +59,13 @@
 class ShenandoahCollectionSet;
 class ShenandoahHeapRegion;
 
+typedef enum {
+  _mark,
+  _evac,
+  _update,
+  _num_phases
+} ShenandoahGCStage;
+
 /*
  * Shenandoah heuristics are primarily responsible for deciding when to start
  * a collection cycle and choosing which regions will be evacuated during the
@@ -156,6 +163,9 @@ protected:
   intx _gc_time_penalties;
   TruncatedSeq* _gc_cycle_time_history;
 
+  uint _surge_level;
+  uint _previous_cycle_max_surge_level;
+
   // There may be many threads that contend to set this flag
   ShenandoahSharedFlag _metaspace_oom;
 
@@ -166,6 +176,15 @@ protected:
                                                      size_t free) = 0;
 
   void adjust_penalty(intx step);
+
+  // Returns 0 if no surge necessary, returns surge level (1-4) if surge is appropriate.
+  //  1:  25% surge (e.g. 4 concurrent worker threads becomes 5)
+  //  2:  50% surge (e.g. 4 concurrent worker threads becomes 6)
+  //  3:  75% surge (e.g. 4 concurrent worker threads becomes 7)
+  //  4: 100% surge (e.g. 4 concurrent worker threads becomes 8, i.e. all Parallel threads)
+  virtual uint should_surge_phase(ShenandoahGCStage phase, double now) {
+    return 0;
+  }
 
 public:
   ShenandoahHeuristics(ShenandoahSpaceInfo* space_info);
@@ -200,6 +219,15 @@ public:
   virtual void choose_collection_set(ShenandoahCollectionSet* collection_set);
 
   virtual bool can_unload_classes();
+
+  virtual void record_phase_end(ShenandoahGCStage p, double now) {
+    // do nothing
+  }
+
+  virtual uint get_surge_level() {
+    // Only adaptive heuristics are able to surge.
+    return 0;
+  }
 
   // This indicates whether or not the current cycle should unload classes.
   // It does NOT indicate that a cycle should be started.

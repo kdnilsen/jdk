@@ -55,6 +55,8 @@ ShenandoahHeuristics::ShenandoahHeuristics(ShenandoahSpaceInfo* space_info) :
   _gc_times_learned(0),
   _gc_time_penalties(0),
   _gc_cycle_time_history(new TruncatedSeq(Moving_Average_Samples, ShenandoahAdaptiveDecayFactor)),
+  _surge_level(0),
+  _previous_cycle_max_surge_level(0),
   _metaspace_oom()
 {
   size_t num_regions = ShenandoahHeap::heap()->num_regions();
@@ -244,7 +246,27 @@ void ShenandoahHeuristics::log_trigger(const char* fmt, ...) {
 }
 
 void ShenandoahHeuristics::record_success_concurrent() {
-  _gc_cycle_time_history->add(elapsed_cycle_time());
+  double cycle_time = elapsed_cycle_time();
+  // If this cycle was accelerated by surge of GC worker threads, adjust the historical record so we do not become
+  // overly optimistic about future GC times.  Surges should be the rare anomaly.
+  switch(_surge_level) {
+    case 4:
+      cycle_time *= 2.0;
+      break;
+    case 3:
+      cycle_time *= 1.75;
+      break;
+    case 2:
+      cycle_time *= 1.5;
+      break;
+    case 1:
+      cycle_time *= 1.25;
+      break;
+    case 0:
+      // no adjustment necessary
+      break;
+  }
+  _gc_cycle_time_history->add(cycle_time);
   _gc_times_learned++;
 
   adjust_penalty(Concurrent_Adjust);

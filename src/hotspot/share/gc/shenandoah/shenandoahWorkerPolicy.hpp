@@ -28,6 +28,9 @@
 #include "memory/allStatic.hpp"
 
 class ShenandoahWorkerPolicy : AllStatic {
+private:
+  static uint calc_workers_for_any_concurrent_phase();
+
 public:
   // Calculate the number of workers for initial marking
   static uint calc_workers_for_init_marking();
