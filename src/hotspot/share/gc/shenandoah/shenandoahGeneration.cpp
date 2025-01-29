@@ -173,8 +173,30 @@ ShenandoahHeuristics* ShenandoahGeneration::initialize_heuristics(ShenandoahMode
   return _heuristics;
 }
 
+#undef KELVIN_DEBUG
+#ifdef KELVIN_DEBUG
+const char* type_name(ShenandoahGenerationType type) {
+  switch (type) {
+    case YOUNG:
+      return "YOUNG";
+    case OLD:
+      return "OLD";
+    case GLOBAL:
+      return "GLOBAL";
+    case NON_GEN:
+      return "NON_GEN";
+    default:
+      return "DEFAULT";
+  }
+}
+#endif
+
 size_t ShenandoahGeneration::bytes_allocated_since_gc_start() const {
-  return Atomic::load(&_bytes_allocated_since_gc_start);
+  size_t result = Atomic::load(&_bytes_allocated_since_gc_start);
+#ifdef KELVIN_DEBUG
+  log_info(gc)("%s:bytes_allocated_since_gc_start() returns %zu", type_name(_type), result);
+#endif
+  return result;
 }
 
 void ShenandoahGeneration::reset_bytes_allocated_since_gc_start() {
@@ -182,6 +204,9 @@ void ShenandoahGeneration::reset_bytes_allocated_since_gc_start() {
 }
 
 void ShenandoahGeneration::increase_allocated(size_t bytes) {
+#ifdef KELVIN_DEBUG
+  log_info(gc)("%s:increase_bytes_allocated_since_gc_start(%zu)", type_name(_type), bytes);
+#endif
   Atomic::add(&_bytes_allocated_since_gc_start, bytes, memory_order_relaxed);
 }
 

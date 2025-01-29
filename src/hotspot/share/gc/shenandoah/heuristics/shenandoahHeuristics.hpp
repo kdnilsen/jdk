@@ -63,6 +63,7 @@ typedef enum {
   _mark,
   _evac,
   _update,
+  _final_roots,
   _num_phases
 } ShenandoahGCStage;
 
@@ -177,15 +178,6 @@ protected:
 
   void adjust_penalty(intx step);
 
-  // Returns 0 if no surge necessary, returns surge level (1-4) if surge is appropriate.
-  //  1:  25% surge (e.g. 4 concurrent worker threads becomes 5)
-  //  2:  50% surge (e.g. 4 concurrent worker threads becomes 6)
-  //  3:  75% surge (e.g. 4 concurrent worker threads becomes 7)
-  //  4: 100% surge (e.g. 4 concurrent worker threads becomes 8, i.e. all Parallel threads)
-  virtual uint should_surge_phase(ShenandoahGCStage phase, double now) {
-    return 0;
-  }
-
 public:
   ShenandoahHeuristics(ShenandoahSpaceInfo* space_info);
   virtual ~ShenandoahHeuristics();
@@ -221,12 +213,21 @@ public:
   virtual bool can_unload_classes();
 
   virtual void record_phase_end(ShenandoahGCStage p, double now) {
-    // do nothing
+    // Only adaptive heuristics will care to record phase end
   }
 
-  virtual uint get_surge_level() {
-    // Only adaptive heuristics are able to surge.
+  // Returns 0 if no surge necessary, returns surge level (1-4) if surge is appropriate.
+  //  1:  25% surge (e.g. 4 concurrent worker threads becomes 5)
+  //  2:  50% surge (e.g. 4 concurrent worker threads becomes 6)
+  //  3:  75% surge (e.g. 4 concurrent worker threads becomes 7)
+  //  4: 100% surge (e.g. 4 concurrent worker threads becomes 8, i.e. all Parallel threads)
+  virtual uint should_surge_phase(ShenandoahGCStage phase, double now) {
+    // Only adaptive heuristics will return non-zero.
     return 0;
+  }
+  
+  uint get_surge_level() {
+    return _surge_level;
   }
 
   // This indicates whether or not the current cycle should unload classes.

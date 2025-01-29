@@ -45,6 +45,7 @@ class ShenandoahPhaseTimeEstimator {
   double _most_recent_start;
   double _sample_array[Samples];
   double _next_prediction;
+  size_t _most_recent_bytes_allocated;
 
  public:
   explicit ShenandoahPhaseTimeEstimator();
@@ -64,6 +65,14 @@ class ShenandoahPhaseTimeEstimator {
   double get_most_recent_start_time() {
     return _most_recent_start;
   }
+
+  void set_most_recent_bytes_allocated(size_t bytes) {
+    _most_recent_bytes_allocated = bytes;
+  }
+
+  size_t get_most_recent_bytes_allocated() {
+    return _most_recent_bytes_allocated;
+  }
 };
 
 
@@ -75,6 +84,7 @@ class ShenandoahAllocationRate : public CHeapObj<mtGC> {
   double sample(size_t allocated);
 
   double upper_bound(double sds) const;
+  double average_rate(double sds) const;
   bool is_spiking(double rate, double threshold) const;
  private:
 
@@ -119,8 +129,6 @@ public:
   virtual bool is_diagnostic()   { return false; }
   virtual bool is_experimental() { return false; }
 
-  virtual uint get_surge_level() override;
-
  private:
   // These are used to adjust the margin of error and the spike threshold
   // in response to GC cycle outcomes. These values are shared, but the
@@ -149,6 +157,7 @@ public:
   void adjust_spike_threshold(double amount);
 
   virtual void record_phase_end(ShenandoahGCStage p, double now) override;
+  virtual uint should_surge_phase(ShenandoahGCStage phase, double now) override;
 
 protected:
   ShenandoahAllocationRate _allocation_rate;
@@ -186,8 +195,6 @@ protected:
   // this threshold, or we might consider this when dynamically resizing generations
   // in the generational case. Controlled by global flag ShenandoahMinFreeThreshold.
   size_t min_free_threshold();
-
-  virtual uint should_surge_phase(ShenandoahGCStage phase, double now) override;
 };
 
 #endif // SHARE_GC_SHENANDOAH_HEURISTICS_SHENANDOAHADAPTIVEHEURISTICS_HPP
