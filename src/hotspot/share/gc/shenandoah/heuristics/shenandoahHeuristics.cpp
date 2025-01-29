@@ -57,6 +57,8 @@ ShenandoahHeuristics::ShenandoahHeuristics(ShenandoahSpaceInfo* space_info) :
   _gc_times_learned(0),
   _gc_time_penalties(0),
   _gc_cycle_time_history(new TruncatedSeq(Moving_Average_Samples, ShenandoahAdaptiveDecayFactor)),
+  _surge_level(0),
+  _previous_cycle_max_surge_level(0),
   _metaspace_oom()
 {
   size_t num_regions = ShenandoahHeap::heap()->num_regions();

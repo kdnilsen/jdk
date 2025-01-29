@@ -34,6 +34,49 @@
 #include "gc/shenandoah/shenandoahSharedVariables.hpp"
 #include "utilities/numberSeq.hpp"
 
+class ShenandoahPhaseTimeEstimator {
+ private:
+  static const uint Samples = 4;
+
+  bool   _changed;
+  uint   _first_index;
+  uint   _num_samples;
+  double _sum_of_samples;
+  double _sum_of_x;
+  double _sum_of_xx;
+  double _most_recent_start;
+  double _sample_array[Samples];
+  double _next_prediction;
+  size_t _most_recent_bytes_allocated;
+
+ public:
+  explicit ShenandoahPhaseTimeEstimator();
+
+  void add_sample(double new_time);
+
+  // Return conservative prediction of time required for next execution of this phase,
+  //   which is Max(average_prediction, linear_prediction),
+  //   average_prediction is average + std_dev, and
+  //   linear_prediction is determined best-fit line + std_dev of this calculation
+  double predict_next();
+
+  void set_most_recent_start_time(double now) {
+    _most_recent_start = now;
+  }
+
+  double get_most_recent_start_time() {
+    return _most_recent_start;
+  }
+
+  void set_most_recent_bytes_allocated(size_t bytes) {
+    _most_recent_bytes_allocated = bytes;
+  }
+
+  size_t get_most_recent_bytes_allocated() {
+    return _most_recent_bytes_allocated;
+  }
+};
+
 class ShenandoahAllocationRate : public CHeapObj<mtGC> {
  public:
   explicit ShenandoahAllocationRate();
@@ -42,6 +85,7 @@ class ShenandoahAllocationRate : public CHeapObj<mtGC> {
   double sample(size_t allocated);
 
   double upper_bound(double sds) const;
+  double average_rate(double sds) const;
   bool is_spiking(double rate, double threshold) const;
   double interval() const {
     return _interval_sec;
@@ -176,6 +220,9 @@ public:
   double get_most_recent_wake_time() const;
   double get_planned_sleep_interval() const;
 
+  virtual void record_phase_end(ShenandoahGCStage p, double now) override;
+  virtual uint should_surge_phase(ShenandoahGCStage phase, double now) override;
+
 protected:
   ShenandoahAllocationRate _allocation_rate;
 
@@ -211,6 +258,8 @@ protected:
   // establishes what is 'normal' for the application and is used as a
   // source of feedback to adjust trigger parameters.
   TruncatedSeq _available;
+
+  ShenandoahPhaseTimeEstimator _phase_stats[ShenandoahGCStage::_num_phases];
 
   ShenandoahFreeSet* _freeset;
   bool _is_generational;

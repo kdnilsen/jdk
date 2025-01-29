@@ -25,34 +25,66 @@
 #include "precompiled.hpp"
 
 #include "gc/shared/gc_globals.hpp"
+#include "gc/shenandoah/shenandoahHeap.inline.hpp"
 #include "gc/shenandoah/shenandoahWorkerPolicy.hpp"
+#include "gc/shenandoah/heuristics/shenandoahHeuristics.hpp"
 
 uint ShenandoahWorkerPolicy::calc_workers_for_init_marking() {
   return ParallelGCThreads;
 }
 
-uint ShenandoahWorkerPolicy::calc_workers_for_conc_marking() {
-  return ConcGCThreads;
+uint ShenandoahWorkerPolicy::calc_workers_for_any_concurrent_phase(ShenandoahHeuristics* heuristics) {
+  uint surge_level = heuristics->get_surge_level();
+  uint active_workers;
+  switch (surge_level) {
+    default:
+    case 0:
+      active_workers = ConcGCThreads;
+      break;
+    case 1:
+      active_workers = ConcGCThreads * 5 / 4;
+      break;
+    case 2:
+      active_workers = ConcGCThreads * 6 / 4;
+      break;
+    case 3:
+      active_workers = ConcGCThreads * 7 / 4;
+      break;
+    case 4:
+      active_workers = ConcGCThreads * 8 / 4;
+      break;
+  }
+  if (active_workers > ParallelGCThreads) {
+    active_workers = ParallelGCThreads;
+  }
+  if (surge_level > 0) {
+    log_info(gc)("Surging to level %u, workers: %u", surge_level, active_workers);
+  }
+  return active_workers;
 }
 
-uint ShenandoahWorkerPolicy::calc_workers_for_rs_scanning() {
-  return ConcGCThreads;
+uint ShenandoahWorkerPolicy::calc_workers_for_conc_marking(ShenandoahGeneration* generation) {
+  return calc_workers_for_any_concurrent_phase(generation->heuristics());
+}
+
+uint ShenandoahWorkerPolicy::calc_workers_for_rs_scanning(ShenandoahGeneration* generation) {
+  return calc_workers_for_any_concurrent_phase(generation->heuristics());
 }
 
 uint ShenandoahWorkerPolicy::calc_workers_for_final_marking() {
   return ParallelGCThreads;
 }
 
-uint ShenandoahWorkerPolicy::calc_workers_for_conc_refs_processing() {
-  return ConcGCThreads;
+uint ShenandoahWorkerPolicy::calc_workers_for_conc_refs_processing(ShenandoahGeneration* generation) {
+  return calc_workers_for_any_concurrent_phase(generation->heuristics());
 }
 
-uint ShenandoahWorkerPolicy::calc_workers_for_conc_root_processing() {
-  return ConcGCThreads;
+uint ShenandoahWorkerPolicy::calc_workers_for_conc_root_processing(ShenandoahGeneration* generation) {
+  return calc_workers_for_any_concurrent_phase(generation->heuristics());
 }
 
-uint ShenandoahWorkerPolicy::calc_workers_for_conc_evac() {
-  return ConcGCThreads;
+uint ShenandoahWorkerPolicy::calc_workers_for_conc_evac(ShenandoahGeneration* generation) {
+  return calc_workers_for_any_concurrent_phase(generation->heuristics());
 }
 
 uint ShenandoahWorkerPolicy::calc_workers_for_fullgc() {
@@ -63,18 +95,18 @@ uint ShenandoahWorkerPolicy::calc_workers_for_stw_degenerated() {
   return ParallelGCThreads;
 }
 
-uint ShenandoahWorkerPolicy::calc_workers_for_conc_update_ref() {
-  return ConcGCThreads;
+uint ShenandoahWorkerPolicy::calc_workers_for_conc_update_ref(ShenandoahGeneration* generation) {
+  return calc_workers_for_any_concurrent_phase(generation->heuristics());
 }
 
 uint ShenandoahWorkerPolicy::calc_workers_for_final_update_ref() {
   return ParallelGCThreads;
 }
 
-uint ShenandoahWorkerPolicy::calc_workers_for_conc_reset() {
-  return ConcGCThreads;
+uint ShenandoahWorkerPolicy::calc_workers_for_conc_reset(ShenandoahGeneration* generation) {
+  return calc_workers_for_any_concurrent_phase(generation->heuristics());
 }
 
-uint ShenandoahWorkerPolicy::calc_workers_for_conc_cleanup() {
-  return ConcGCThreads;
+uint ShenandoahWorkerPolicy::calc_workers_for_conc_cleanup(ShenandoahGeneration* generation) {
+  return calc_workers_for_any_concurrent_phase(generation->heuristics());
 }

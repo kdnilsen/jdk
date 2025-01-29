@@ -423,6 +423,12 @@ public:
     size_t total_words = _mutator_words_allocated + _mutator_words_allocated_at_rebuild;
     size_t result = total_words - _mutator_words_at_last_sample;
 
+#undef KELVIN_SURGE
+#ifdef KELVIN_SURGE
+    log_info(gc)(" allocs_since_sample, words_allocated: %zu, @rebuild: %zu, total: %zu, @last: %zu, result: %zu",
+                 _mutator_words_allocated, _mutator_words_allocated_at_rebuild, total_words, _mutator_words_at_last_sample, result);
+#endif
+
     // Note: there's always the possibility that the tally of total allocations exceeds the 64-bit capacity of our size_t
     // counter.  We assume that the difference between relevant samples does not exceed this count.  Example:
     //   Suppose _mutator_words_at_last_sample is 0xffff_ffff_ffff_fff0 (18,446,744,073,709,551,600 Decimal)

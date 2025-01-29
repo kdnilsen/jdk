@@ -349,6 +349,226 @@ void ShenandoahAdaptiveHeuristics::add_degenerated_gc_time(double timestamp, dou
   }
 }
 
+#undef KELVIN_SURGE_ACCELERATED
+#ifdef KELVIN_SURGE_ACCELERATED
+const char* stage_name(ShenandoahGCStage stage) {
+  switch (stage) {
+    case ShenandoahGCStage::_num_phases:
+      return "<num-phases>";
+    case ShenandoahGCStage::_final_roots:
+      return "final_roots";
+    case ShenandoahGCStage::_mark:
+      return "mark";
+    case ShenandoahGCStage::_evac:
+      return "evac";
+    case ShenandoahGCStage::_update:
+      return "update";
+    default:
+      return "<unknown>";
+  }
+}
+#endif
+
+uint ShenandoahAdaptiveHeuristics::should_surge_phase(ShenandoahGCStage stage, double now) {
+  _phase_stats[stage].set_most_recent_start_time(now);
+
+  // If we're already surging within this cycle, do not reduce the surge level
+  uint surge = _surge_level;
+  size_t allocatable = ShenandoahHeap::heap()->free_set()->available();
+  double time_to_finish_gc = 0.0;
+
+  assert (ConcGCThreads * 2 == ParallelGCThreads, "Assume ConcurrentGCThreads is half ParallelGCThreads");
+  if (_previous_cycle_max_surge_level > 1) {
+    // If we required more than minimal surge in previous cycle, continue with a small surge now.  We may still be
+    // catching up
+    if (surge < 1) {
+      surge = 1;
+    }
+  }
+
+  size_t bytes_allocated = _space_info->bytes_allocated_since_gc_start();
+  _phase_stats[stage].set_most_recent_bytes_allocated(bytes_allocated);
+  double avg_alloc_rate = _allocation_rate.average_rate(_margin_of_error_sd);
+  double alloc_rate = avg_alloc_rate;
+
+#ifdef KELVIN_DEVELOPMENT
+  log_info(gc)(" bytes_allocated: %zu, avg_alloc_rate: %.3f MB/s, _margin_of_error_sd: %.3f",
+               bytes_allocated, alloc_rate / (1024 * 1024), _margin_of_error_sd);
+#endif
+
+  switch (stage) {
+    case ShenandoahGCStage::_num_phases:
+      assert(false, "Should not happen");
+      break;
+    case ShenandoahGCStage::_final_roots:
+    {
+      // May happen after _mark, in case this is an abbreviated cycle
+      time_to_finish_gc += _phase_stats[_final_roots].predict_next();
+
+      // final_roots is preceded by mark, no evac or update
+      size_t allocated_since_last_sample = bytes_allocated;
+      double time_since_last_sample = now - _phase_stats[_mark].get_most_recent_start_time();
+      double alloc_rate_since_gc_start = allocated_since_last_sample / time_since_last_sample;
+      if (alloc_rate_since_gc_start > alloc_rate) {
+        alloc_rate = alloc_rate_since_gc_start;
+#ifdef KELVIN_DEVELOPMENT
+        log_info(gc)(" increasing alloc rate to %.3f MB/s in final_roots: %zu / %.3f",
+                     alloc_rate / (1024 * 1024), bytes_allocated, now - _phase_stats[_mark].get_most_recent_start_time());
+#endif
+      }
+    }
+    break;
+
+    case ShenandoahGCStage::_mark:
+      time_to_finish_gc += _phase_stats[_mark].predict_next();
+
+    case ShenandoahGCStage::_evac:
+    {
+      if (stage == _evac) {
+        size_t allocated_since_last_sample = bytes_allocated;
+        double time_since_last_sample = now - _phase_stats[_mark].get_most_recent_start_time();
+        double alloc_rate_since_gc_start = allocated_since_last_sample / time_since_last_sample;
+        if (alloc_rate_since_gc_start > alloc_rate) {
+          alloc_rate = alloc_rate_since_gc_start;
+#ifdef KELVIN_DEVELOPMENT
+          log_info(gc)(" increasing alloc rate to %.3f MB/s in evac: %zu / %.3f",
+                       alloc_rate / (1024 * 1024), bytes_allocated, now - _phase_stats[_mark].get_most_recent_start_time());
+#endif
+        }
+      }
+      time_to_finish_gc += _phase_stats[_evac].predict_next();
+    }
+    case ShenandoahGCStage::_update:
+    {
+      if (stage == _update) {
+        size_t allocated_since_last_sample = bytes_allocated - _phase_stats[_evac].get_most_recent_bytes_allocated();
+        double time_since_last_sample = now - _phase_stats[_evac].get_most_recent_start_time();
+        double alloc_rate_since_evac_start = allocated_since_last_sample / time_since_last_sample;
+        if (alloc_rate_since_evac_start > alloc_rate) {
+          alloc_rate = alloc_rate_since_evac_start;
+#ifdef KELVIN_DEVELOPMENT
+          log_info(gc)(" increasing alloc rate to %.3f MB/s in update since evac: %zu / %.3f",
+                       alloc_rate / (1024 * 1024), bytes_allocated - _phase_stats[_evac].get_most_recent_bytes_allocated(),
+                       (now - _phase_stats[_evac].get_most_recent_start_time()));
+#endif
+        }
+        allocated_since_last_sample = bytes_allocated;
+        time_since_last_sample = now - _phase_stats[_mark].get_most_recent_start_time();
+        double alloc_rate_since_gc_start = allocated_since_last_sample / time_since_last_sample;
+        if (alloc_rate_since_gc_start > alloc_rate) {
+          alloc_rate = alloc_rate_since_gc_start;
+#ifdef KELVIN_DEVELOPMENT
+          log_info(gc)(" increasing alloc rate to %.3f MB/s in update since mark: %zu / %.3f",
+                       alloc_rate / (1024 * 1024), bytes_allocated, now - _phase_stats[_mark].get_most_recent_start_time());
+#endif
+        }
+      }
+      time_to_finish_gc += _phase_stats[_update].predict_next();
+    }
+  }
+
+  double avg_odds;
+  if (allocatable == 0) {
+    // Avoid divide by zero, and force high surge if we are out of memory
+    avg_odds = 1000.0;
+  } else {
+    avg_odds = (alloc_rate * time_to_finish_gc) / allocatable;
+  }
+
+  if ((now - _previous_allocation_timestamp) >= MINIMUM_ALLOC_RATE_SAMPLE_INTERVAL) {
+    size_t words_allocated_since_last_sample = _freeset->get_mutator_allocations_since_previous_sample();
+    double time_since_last_sample = now - _previous_allocation_timestamp;
+    double instantaneous_rate_words_per_second = words_allocated_since_last_sample / time_since_last_sample;
+    _previous_allocation_timestamp = now;
+    
+#undef KELVIN_SURGE_ACCELERATED
+#ifdef KELVIN_SURGE_ACCELERATED
+    log_info(gc)("should_surge_gc()?, time_to_finish_gc: %0.3f, words_allocated_since_last_sample: "
+                 SIZE_FORMAT ", instantaneous_rate: %0.3f MB/s",
+                 time_to_finish_gc, words_allocated_since_last_sample,
+                 (instantaneous_rate_words_per_second * HeapWordSize) / (1024 * 1024));
+#endif
+    add_rate_to_acceleration_history(now, instantaneous_rate_words_per_second);
+  }
+
+  double race_odds;
+  if (_spike_acceleration_num_samples > 0) {
+    double acceleration;
+    double current_rate;
+    size_t consumption_accelerated = accelerated_consumption(acceleration, current_rate,
+                                                             avg_alloc_rate / HeapWordSize, time_to_finish_gc);
+    double accelerated_odds;
+    if (allocatable == 0) {
+      // Avoid divide by zero, and force high surge if we are out of memory
+      accelerated_odds = 1000.0;
+    } else {
+      accelerated_odds = ((double) consumption_accelerated) / allocatable;
+    }
+#ifdef KELVIN_SURGE_ACCELERATED
+    log_info(gc)("should_surge() current rate: %.3f MB/s, acceleration: %.3f MB/s/s, consumption_accelerated: %zu, allocatable: %zu, avg_odds: %.3f, accelerated_odds: %.3f",
+                 (HeapWordSize * current_rate) / (1024 * 1024), (HeapWordSize * acceleration) / (1024 * 1024),
+                 consumption_accelerated, allocatable, avg_odds, accelerated_odds);
+#endif
+    race_odds = MAX2(avg_odds, accelerated_odds);
+  } else {
+    race_odds = avg_odds;
+  }
+  if (race_odds > 1.75) {
+    surge = 4;
+  } else if (race_odds > 1.5) {
+    if (surge < 3) {
+      surge = 3;
+    }
+  } else if (race_odds > 1.25) {
+    if (surge < 2) {
+      surge = 2;
+    }
+  } else if (race_odds > 1.0) {
+    if (surge < 1) {
+      surge = 1;
+    }
+  }
+
+#ifdef KELVIN_SURGE_ACCELERATED
+  const char* phase_name = stage_name(stage);
+  log_info(gc)("ShouldSurge(%s), allocatable: %zu, alloc_rate: %.3f MB/s, time_to_finish_gc: %.3fs, race_odds: %.3f returns %u",
+               phase_name, allocatable, alloc_rate / (1024 * 1024), time_to_finish_gc, race_odds, surge);
+#endif
+  _surge_level = surge;
+  if ((stage == ShenandoahGCStage::_update) || (stage == ShenandoahGCStage::_final_roots)) {
+    _previous_cycle_max_surge_level = surge;
+  }
+  return surge;
+}
+
+void ShenandoahAdaptiveHeuristics::record_phase_end(ShenandoahGCStage phase, double now) {
+  double duration = now - _phase_stats[phase].get_most_recent_start_time();
+  switch (_surge_level) {
+    case 4:
+      duration *= 2.0;          // If we had half the workers, assume we would have required twice the time
+      break;
+    case 3:
+      duration *= 1.75;         // If we had 4/7 the workers, assume we would have required 7/4 the time
+      break;
+    case 2:
+      duration *= 1.5;          // If we had 4/6 the workers, assume we would have required 6/4 the time
+      break;
+    case 1:
+      duration *= 1.25;         // If we had 4/5 the workers, assume we would have required 5/4 the time
+      break;
+    case 0:
+    default:
+      // No adjustment to duration necessary
+      break;
+  }
+#undef KELVIN_DEVELOPMENT
+#ifdef KELVIN_DEVELOPMENT
+  const char* phase_name = stage_name(phase);
+  log_info(gc)("Recording duration of phase %s, adjusted by surge_level %u: %.3f", phase_name, _surge_level, duration);
+#endif
+  _phase_stats[phase].add_sample(duration);
+}
+
 void ShenandoahAdaptiveHeuristics::add_gc_time(double timestamp, double gc_time) {
   // Update best-fit linear predictor of GC time
   uint index = (_gc_time_first_sample_index + _gc_time_num_samples) % GC_TIME_SAMPLE_SIZE;
@@ -391,7 +611,6 @@ void ShenandoahAdaptiveHeuristics::add_gc_time(double timestamp, double gc_time)
     // Two points define a line
     double delta_y = gc_time - _gc_time_samples[_gc_time_first_sample_index];
     double delta_x = timestamp - _gc_time_timestamps[_gc_time_first_sample_index];
-
     _gc_time_m = delta_y / delta_x;
 
     // y = mx + b
@@ -519,6 +738,10 @@ void ShenandoahAdaptiveHeuristics::record_success_degenerated() {
   // either of them should have triggered earlier to avoid this case.
   adjust_margin_of_error(DEGENERATE_PENALTY_SD);
   adjust_spike_threshold(DEGENERATE_PENALTY_SD);
+
+  // If we had to degenerate, that's as if we were surging at max level
+  _previous_cycle_max_surge_level = 4;
+  _surge_level = 0;
 }
 
 void ShenandoahAdaptiveHeuristics::record_success_full() {
@@ -528,6 +751,10 @@ void ShenandoahAdaptiveHeuristics::record_success_full() {
   // either of them should have triggered earlier to avoid this case.
   adjust_margin_of_error(FULL_PENALTY_SD);
   adjust_spike_threshold(FULL_PENALTY_SD);
+
+  // If we escalated to full gc, that's as if we were surging at max level
+  _previous_cycle_max_surge_level = 4;
+  _surge_level = 0;
 }
 
 #undef KELVIN_NEEDS_TO_SEE
@@ -649,7 +876,6 @@ bool ShenandoahAdaptiveHeuristics::should_start_gc() {
       future_accelerated_planned_gc_time_is_average = true;
     }
     size_t allocated_since_last_sample = _freeset->get_mutator_allocations_since_previous_sample();
-
     double instantaneous_rate_words_per_second = allocated_since_last_sample / (now - _previous_allocation_timestamp);
     _previous_allocation_timestamp = now;
 
@@ -793,9 +1019,6 @@ bool ShenandoahAdaptiveHeuristics::should_start_gc() {
       }
 #endif
 
-      _spike_acceleration_num_samples = 0;
-      _spike_acceleration_first_sample_index = 0;
-
       // Count this as a form of RATE trigger for purposes of adjusting heuristic triggering configuration because this
       // trigger is influenced more by margin_of_error_sd than by spike_threshold_sd.
       _last_trigger = RATE;
@@ -868,8 +1091,6 @@ bool ShenandoahAdaptiveHeuristics::should_start_gc() {
   }
 
   if (ShenandoahHeuristics::should_start_gc()) {
-    _spike_acceleration_num_samples = 0;
-    _spike_acceleration_first_sample_index = 0;
     _previous_trigger_declinations = _declined_trigger_count;
     _declined_trigger_count = 0;
     return true;
@@ -933,7 +1154,7 @@ size_t ShenandoahAdaptiveHeuristics::accelerated_consumption(double& acceleratio
     uint delta = _spike_acceleration_num_samples - ShenandoahRateAccelerationSampleSize;
     for (uint i = 0; i < ShenandoahRateAccelerationSampleSize; i++) {
       uint index = (_spike_acceleration_first_sample_index + delta + i) % _spike_acceleration_buffer_size;
-#ifdef KELVIN_NEEDS_TO_SEE
+#ifdef KELVIN_SURGE_ACCELERATED
       log_info(gc)(" accel_consumption[%u, index: %u] @%0.6f s: %0.6f MB/s", i, index, _spike_acceleration_rate_timestamps[index],
                    _spike_acceleration_rate_samples[index] * HeapWordSize / (1024 * 1024));
 #endif
@@ -965,7 +1186,7 @@ size_t ShenandoahAdaptiveHeuristics::accelerated_consumption(double& acceleratio
       uint preceding_index = (sample_index == 0)? _spike_acceleration_buffer_size - 1: sample_index - 1;
       double sample_weight = (_spike_acceleration_rate_timestamps[sample_index]
                               - _spike_acceleration_rate_timestamps[preceding_index]);
-#ifdef KELVIN_NEEDS_TO_SEE
+#ifdef KELVIN_SURGE_ACCELERATED
       log_info(gc)(" momentary_rate computed from sample[%u] @ index %u, preceding %u with weight %.3f and rate %.3f MB/s",
                    i, sample_index, preceding_index, sample_weight,
                    _spike_acceleration_rate_samples[sample_index] * HeapWordSize / (1024 * 1024));
@@ -978,7 +1199,7 @@ size_t ShenandoahAdaptiveHeuristics::accelerated_consumption(double& acceleratio
     log_info(gc)(" momentary_rate final answer: %.3f MB/s", (momentary_rate * HeapWordSize) / (1024 * 1024));
 #endif
     bool is_spiking = _allocation_rate.is_spiking(momentary_rate, _spike_threshold_sd);
-#ifdef KELVIN_NEEDS_TO_SEE
+#ifdef KELVIN_DEBUG
     log_info(gc)(" is_spiking? %s, momentary_rate: %.3f, average: %.3f, is zscore: %.3f > threshold: %.3f?",
                  is_spiking? "yes": "no", (momentary_rate * HeapWordSize) / (1024 * 1024),
                  (_allocation_rate._rate.avg() * HeapWordSize) / (1024 * 1024),
@@ -1007,7 +1228,7 @@ size_t ShenandoahAdaptiveHeuristics::accelerated_consumption(double& acceleratio
     double x2_sum = 0.0;
     uint excess = _spike_acceleration_num_samples - ShenandoahRateAccelerationSampleSize;
     for (uint i = 0; i < ShenandoahRateAccelerationSampleSize; i++) {
-#ifdef KELVIN_NEEDS_TO_SEE
+#ifdef KELVIN_SURGE_ACCELERATED
       log_info(gc)("Calculating best-fit acceleration from x_array[%u]: %.3f and y_array[%u]: %.3f MB/s",
                    i, x_array[i], i, (y_array[i] * HeapWordSize) / (1024 * 1024));
 #endif
@@ -1024,7 +1245,7 @@ size_t ShenandoahAdaptiveHeuristics::accelerated_consumption(double& acceleratio
          / (ShenandoahRateAccelerationSampleSize * x2_sum - x_sum * x_sum));
     b = (y_sum - m * x_sum) / ShenandoahRateAccelerationSampleSize;
 
-#ifdef KELVIN_NEEDS_TO_SEE
+#ifdef KELVIN_SURGE_ACCELERATED
     log_info(gc)("Calculated acceleration: %.3f MB/s/s, intercept: %.3f MB/s",
                  (m * HeapWordSize) / (1024 * 1024), (b * HeapWordSize) / (1024 * 1024));
 #endif
@@ -1033,7 +1254,7 @@ size_t ShenandoahAdaptiveHeuristics::accelerated_consumption(double& acceleratio
     if (m > 0) {
       double proposed_current_rate = m * x_array[ShenandoahRateAccelerationSampleSize - 1] + b;
 
-#ifdef KELVIN_NEEDS_TO_SEE
+#ifdef KELVIN_SURGE_ACCELERATED
       log_info(gc)("Calculating acceleration to be %.3f MB/s/s, with current rate: %.3f MB/s",
                    (m * HeapWordSize) / (1024 * 1024), (proposed_current_rate * HeapWordSize) / (1024 * 1024));
 #endif
@@ -1046,16 +1267,14 @@ size_t ShenandoahAdaptiveHeuristics::accelerated_consumption(double& acceleratio
 
   double time_delta = get_planned_sleep_interval() + predicted_cycle_time;
   size_t words_to_be_consumed = (size_t) (current_rate * time_delta + 0.5 * acceleration * time_delta * time_delta);
-#ifdef KELVIN_VERBOSE
+#ifdef KELVIN_SURGE_ACCELERATED
   size_t bytes_to_be_consumed = words_to_be_consumed * HeapWordSize;
   log_info(gc)("Consuming " SIZE_FORMAT "%s @ rate: %0.3f MB/s, accel: %0.3f MB/s/s @ %0.3f s",
                byte_size_in_proper_unit(bytes_to_be_consumed), proper_unit_for_byte_size(bytes_to_be_consumed),
                (current_rate * HeapWordSize) / (1024 * 1024),
                (acceleration * HeapWordSize) / (1024 * 1024), time_delta);
-  log_info(gc)("Allocatable bytes: " SIZE_FORMAT ", available: " SIZE_FORMAT ", min_threshold: " SIZE_FORMAT,
-               _global_allocatable_words * HeapWordSize, _global_available_bytes, _global_min_threshold);
 #endif
-#ifdef KELVIN_NEEDS_TO_SEE
+#ifdef KELVIN_SURGE_ACCELERATED
   log_info(gc)("For time %0.6f = %0.6f + %0.6f, bytes to be consumed is: " SIZE_FORMAT,
                time_delta, get_planned_sleep_interval(), predicted_cycle_time, words_to_be_consumed * HeapWordSize);
 #endif
@@ -1068,6 +1287,16 @@ ShenandoahAllocationRate::ShenandoahAllocationRate() :
   _interval_sec(1.0 / ShenandoahAdaptiveSampleFrequencyHz),
   _rate(int(ShenandoahAdaptiveSampleSizeSeconds * ShenandoahAdaptiveSampleFrequencyHz), ShenandoahAdaptiveDecayFactor),
   _rate_avg(int(ShenandoahAdaptiveSampleSizeSeconds * ShenandoahAdaptiveSampleFrequencyHz), ShenandoahAdaptiveDecayFactor) {
+}
+
+double ShenandoahAllocationRate::average_rate(double sds) const {
+  double avg = _rate_avg.avg();
+  double computed_sd = _rate_avg.sd();
+#ifdef KELVIN_DEVELOPMENT
+  log_info(gc)("average_rate computed from prediction: %.3f, computed_sd: %.3f, sds: %.3f, result: %.3f",
+               avg, computed_sd, sds, avg + (sds * computed_sd));
+#endif
+  return avg + (sds * computed_sd);
 }
 
 double ShenandoahAllocationRate::sample(size_t allocated) {
@@ -1126,3 +1355,71 @@ double ShenandoahAllocationRate::instantaneous_rate(double time, size_t allocate
   return (time_delta_sec > 0)  ? (allocation_delta / time_delta_sec) : 0;
 }
 
+ShenandoahPhaseTimeEstimator::ShenandoahPhaseTimeEstimator() :
+  _changed(true),
+  _first_index(0),
+  _num_samples(0),
+  _sum_of_samples(0.0),
+  _sum_of_x(0.0),
+  _sum_of_xx(0.0) { }
+
+void ShenandoahPhaseTimeEstimator::add_sample(double sample) {
+  if (_num_samples >= Samples) {
+    _sum_of_samples -= _sample_array[_first_index];
+    _num_samples--;
+    _first_index++;
+    if (_first_index == Samples) {
+      _first_index = 0;
+    }
+  } else {
+    _sum_of_x += _num_samples;
+    double xx = _num_samples * _num_samples;
+    _sum_of_xx += xx;
+  }
+  assert(_num_samples < Samples, "Unexpected overflow of ShenandoahPhaseTimeEstimator samples");
+  assert(_first_index < Samples, "Unexpected overflow");
+
+  _sum_of_samples += sample;
+  _sample_array[(_first_index + _num_samples++) % Samples] = sample;
+  _changed = true;
+}
+
+double ShenandoahPhaseTimeEstimator::predict_next() {
+  if (!_changed) {
+    return _next_prediction;
+  } else if (_num_samples > 0) {
+    double samples[Samples];
+    double mean = _sum_of_samples / _num_samples;
+    double sum_of_squared_deviations = 0.0;
+    double sum_of_xy = 0.0;
+    for (uint i = 0; i < _num_samples; i++) {
+      uint index = (_first_index + i) % Samples;
+      double sample = _sample_array[index];
+      samples[i] = sample;
+      sum_of_xy = i * sample;
+      double delta = mean - sample;
+      sum_of_squared_deviations += delta * delta;
+    }
+    double standard_deviation = sqrt(sum_of_squared_deviations / _num_samples);
+    double prediction_by_average = mean + standard_deviation;
+    double prediction_by_trend = prediction_by_average;
+    
+    if (_num_samples > 2) {
+      double m = (_num_samples * sum_of_xy - _sum_of_x * _sum_of_samples) / (_num_samples * _sum_of_xx - _sum_of_x * _sum_of_x);
+      double b = (_sum_of_samples - m * _sum_of_x) / _num_samples;
+      sum_of_squared_deviations = 0;
+      for (uint i = 0; i < _num_samples; i++) {
+        double estimated_y = b + m * i;
+        double delta = estimated_y - samples[i];
+        sum_of_squared_deviations = delta * delta;
+      }
+      standard_deviation = sqrt(sum_of_squared_deviations / _num_samples);
+      prediction_by_trend = b + m * _num_samples + standard_deviation;;
+    }
+    _next_prediction = MAX2(prediction_by_average, prediction_by_trend);
+    _changed = false;
+    return _next_prediction;
+  } else {
+    return 0.0;
+  }
+}
