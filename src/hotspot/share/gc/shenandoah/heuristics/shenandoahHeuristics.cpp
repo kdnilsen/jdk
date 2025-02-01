@@ -254,7 +254,7 @@ void ShenandoahHeuristics::adjust_penalty(intx step) {
   assert(0 <= _gc_time_penalties && _gc_time_penalties <= 100,
          "In range before adjustment: " INTX_FORMAT, _gc_time_penalties);
 
-  if (_previous_trigger_declinations < 5) {
+  if (_previous_trigger_declinations < 16) {
     // Don't penalize if heuristics are not responsible for a negative outcome.  Allow heuristics 5 checks following
     // previous GC to calibrate itself without penalty.
     step = 0;
@@ -292,7 +292,29 @@ void ShenandoahHeuristics::log_trigger(const char* fmt, ...) {
 }
 
 void ShenandoahHeuristics::record_success_concurrent() {
-  _gc_cycle_time_history->add(elapsed_cycle_time());
+  double cycle_time = elapsed_cycle_time();
+  if (_surge_level > 0) {
+    switch (_surge_level) {
+      case 1:
+        cycle_time *= 1.25;
+        break;
+      case 2:
+        cycle_time *= 1.5;
+        break;
+      case 3:
+        cycle_time *= 1.75;
+        break;
+      case 4:
+        cycle_time *= 2.0;
+        break;
+    }
+  }
+
+#undef KELVIN_SURGE_CYCLE_TIME
+#ifdef KELVIN_SURGE_CYCLE_TIME
+  log_info(gc)("Reporting generic adjusted GC cycle time: %.3f, surge level: %u", cycle_time, _surge_level);
+#endif
+  _gc_cycle_time_history->add(cycle_time);
   _gc_times_learned++;
 
   adjust_penalty(Concurrent_Adjust);

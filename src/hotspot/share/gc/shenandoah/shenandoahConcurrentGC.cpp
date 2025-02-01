@@ -108,6 +108,11 @@ bool ShenandoahConcurrentGC::collect(GCCause::Cause cause) {
   ShenandoahHeuristics* heuristics = _generation->heuristics();
   ShenandoahBreakpointGCScope breakpoint_gc_scope(cause);
 
+#define KELVIN_WTF
+#ifdef KELVIN_WTF
+  log_info(gc)("collect() is going to see if we should surge phase");
+#endif
+
   double start_gc_time = os::elapsedTime();
   heuristics->should_surge_phase(ShenandoahGCStage::_mark, start_gc_time);
 
