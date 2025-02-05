@@ -126,9 +126,9 @@ public:
 
   virtual ~ShenandoahAdaptiveHeuristics();
 
-  virtual void initialize();
+  virtual void initialize() override;
 
-  virtual void post_initialize();
+  virtual void post_initialize() override;
 
   virtual void choose_collection_set_from_regiondata(ShenandoahCollectionSet* cset,
                                                      RegionData* data, size_t size,

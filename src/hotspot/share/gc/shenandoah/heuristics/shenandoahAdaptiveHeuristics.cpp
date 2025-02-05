@@ -124,7 +124,7 @@ ShenandoahAdaptiveHeuristics::ShenandoahAdaptiveHeuristics(ShenandoahSpaceInfo* 
   _acceleration_goodness_ratio(ShenandoahInitialAcceleratedAllocationRateGoodnessRatio),
   _consecutive_goodness(0) { }
 #else
-  _most_recent_headroom_at_start_of_idle(0) {
+  _most_recent_headroom_at_start_of_idle((size_t) 0) {
     _freeset = ShenandoahHeap::heap()->free_set();
   }
 #endif
