@@ -86,6 +86,9 @@ class ShenandoahHeuristics : public CHeapObj<mtGC> {
 protected:
   static const uint Moving_Average_Samples = 10; // Number of samples to store in moving averages
 
+  static const uint Min_Surge_Level        =  1; // 0 denotes no surge, 1 denotes surge of 25%
+  static const uint Max_Surge_Level        =  8; // 8 denotes surge of 200%
+
   size_t _declined_trigger_count;
   size_t _previous_trigger_declinations;
 
@@ -107,6 +110,10 @@ protected:
 #ifdef ASSERT
       _union_tag = is_uninitialized;
 #endif
+    }
+
+    inline uint max_surge_level() {
+      return Max_Surge_Level;
     }
 
     inline void set_region_and_garbage(ShenandoahHeapRegion* region, size_t garbage) {

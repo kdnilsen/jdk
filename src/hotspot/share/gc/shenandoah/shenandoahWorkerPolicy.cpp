@@ -36,27 +36,10 @@ uint ShenandoahWorkerPolicy::calc_workers_for_init_marking() {
 uint ShenandoahWorkerPolicy::calc_workers_for_any_concurrent_phase(ShenandoahHeuristics* heuristics) {
   uint surge_level = heuristics->get_surge_level();
   uint active_workers;
-  switch (surge_level) {
-    default:
-    case 0:
-      active_workers = ConcGCThreads;
-      break;
-    case 1:
-      active_workers = ConcGCThreads * 5 / 4;
-      break;
-    case 2:
-      active_workers = ConcGCThreads * 6 / 4;
-      break;
-    case 3:
-      active_workers = ConcGCThreads * 7 / 4;
-      break;
-    case 4:
-      active_workers = ConcGCThreads * 8 / 4;
-      break;
-  }
-  if (active_workers > ParallelGCThreads) {
-    active_workers = ParallelGCThreads;
-  }
+  assert (surge_level <= ShenandaohHeuristics::max_surge_level(), "sanity");
+
+  active_workers = (uint) (ConcGCThreads * (1.0 + surge_level * 0.25));
+  assert(active_workers <= ParallelGCThreads, "Cannot surge beyond ParallelGCThreads");
   if (surge_level > 0) {
     log_info(gc)("Surging to level %u, workers: %u", surge_level, active_workers);
   }

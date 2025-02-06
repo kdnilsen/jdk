@@ -293,30 +293,13 @@ void ShenandoahHeuristics::log_trigger(const char* fmt, ...) {
 
 void ShenandoahHeuristics::record_success_concurrent() {
   double cycle_time = elapsed_cycle_time();
-  if (_surge_level > 0) {
-    switch (_surge_level) {
-      case 1:
-        cycle_time *= 1.25;
-        break;
-      case 2:
-        cycle_time *= 1.5;
-        break;
-      case 3:
-        cycle_time *= 1.75;
-        break;
-      case 4:
-        cycle_time *= 2.0;
-        break;
-    }
-  }
-
+  cycle_time *= (1.0 + _surge_level * 0.25);
 #undef KELVIN_SURGE_CYCLE_TIME
 #ifdef KELVIN_SURGE_CYCLE_TIME
   log_info(gc)("Reporting generic adjusted GC cycle time: %.3f, surge level: %u", cycle_time, _surge_level);
 #endif
   _gc_cycle_time_history->add(cycle_time);
   _gc_times_learned++;
-
   adjust_penalty(Concurrent_Adjust);
 }
 
