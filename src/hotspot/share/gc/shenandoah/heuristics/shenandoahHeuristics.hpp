@@ -112,10 +112,6 @@ protected:
 #endif
     }
 
-    inline uint max_surge_level() {
-      return Max_Surge_Level;
-    }
-
     inline void set_region_and_garbage(ShenandoahHeapRegion* region, size_t garbage) {
       _region = region;
       _region_union._garbage = garbage;
@@ -242,8 +238,12 @@ public:
     // Only adaptive heuristics will return non-zero.
     return 0;
   }
+
+  static inline uint max_surge_level() {
+    return Max_Surge_Level;
+  }
   
-  uint get_surge_level() {
+  inline uint get_surge_level() {
     return _surge_level;
   }
 
