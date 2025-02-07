@@ -21,7 +21,6 @@
  * questions.
  *
  */
-#include "precompiled.hpp"
 
 #include "gc/shenandoah/shenandoahAgeCensus.hpp"
 #include "gc/shenandoah/shenandoahFreeSet.hpp"
@@ -103,7 +102,7 @@ size_t ShenandoahYoungGeneration::available() const {
 #undef KELVIN_VERBOSE
 #ifdef KELVIN_VERBOSE
   ShenandoahFreeSet* freeset = ShenandoahHeap::heap()->free_set();
-  log_info(gc)("Young available is MIN(" SIZE_FORMAT ", " SIZE_FORMAT ") with capacity: " SIZE_FORMAT " and reserve: " SIZE_FORMAT,
+  log_info(gc)("Young available is MIN(%zu, %zu) with capacity: %zu and reserve: %zu",
                available, freeset->available(), max_capacity(), freeset->reserved());
 #endif
   return MIN2(available, ShenandoahHeap::heap()->free_set()->available());
