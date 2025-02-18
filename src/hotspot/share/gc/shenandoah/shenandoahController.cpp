@@ -53,6 +53,30 @@ size_t ShenandoahController::get_gc_id() {
   return Atomic::load(&_gc_id);
 }
 
+void ShenandoahController::stall_for_alloc_failure_without_degenerating(ShenandoahAllocRequest& req) {
+  ShenandoahHeap* heap = ShenandoahHeap::heap();
+  ShenandoahGeneration* generation =
+    heap->mode()->is_generational()? (ShenandoahGeneration*) heap->young_generation(): heap->global_generation();
+  ShenandoahHeuristics* heuristics = generation->heuristics();
+  assert(current()->is_Java_thread(), "expect Java thread here");
+  heuristics->expedite_gc();
+  double start = os::elapsedTime();
+  {
+    MonitorLocker ml(&_alloc_failure_waiters_lock);
+    while (is_alloc_failure_gc()) {
+      ml.wait();
+    }
+  }
+  double stop = os::elapsedTime();
+  double stall = stop - start;
+  {
+    ResourceMark rm;
+    log_info(gc)("Thread: %s, experienced allocation stall for %.3f ms waiting on %s allocation of requested size %zu bytes",
+		 Thread::current()->name(), stall,
+		 ShenandoahAllocRequest::alloc_type_to_string(req.type()), req.actual_size());
+  }
+}
+
 void ShenandoahController::handle_alloc_failure(ShenandoahAllocRequest& req, bool block) {
   ShenandoahHeap* heap = ShenandoahHeap::heap();
 

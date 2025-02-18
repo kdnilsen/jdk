@@ -486,6 +486,11 @@ uint ShenandoahAdaptiveHeuristics::should_surge_phase(ShenandoahGCStage stage, d
     }
   }
 
+  if (_expedite_gc_requests > 0) {
+    surge = Max_Surge_Level;
+    return surge;
+  }
+
   if (surge == Max_Surge_Level) {
     // Even if surge is already max, we need to do the above to update _phase_stats.  But no need to do acceleration
     // computations if we're already at max surge level.
@@ -566,6 +571,7 @@ uint ShenandoahAdaptiveHeuristics::should_surge_phase(ShenandoahGCStage stage, d
   _surge_level = surge;
   if ((stage == ShenandoahGCStage::_update) || (stage == ShenandoahGCStage::_final_roots)) {
     _previous_cycle_max_surge_level = surge;
+    _expedite_gc_requests = 0;
   }
   return surge;
 }
@@ -752,6 +758,7 @@ void ShenandoahAdaptiveHeuristics::record_success_concurrent() {
     adjust_last_trigger_parameters(z_score / -100);
   }
   _previous_cycle_max_surge_level = _surge_level;
+  _expedite_gc_requests = 0;
   _surge_level = 0;
 }
 
@@ -772,6 +779,7 @@ void ShenandoahAdaptiveHeuristics::record_success_degenerated() {
 
   // If we had to degenerate, that's as if we were surging at max level
   _previous_cycle_max_surge_level = Max_Surge_Level;
+  _expedite_gc_requests = 0;
   _surge_level = 0;
 }
 
@@ -785,6 +793,7 @@ void ShenandoahAdaptiveHeuristics::record_success_full() {
 
   // If we escalated to full gc, that's as if we were surging at max level
   _previous_cycle_max_surge_level = Max_Surge_Level;
+  _expedite_gc_requests = 0;
   _surge_level = 0;
 }
 

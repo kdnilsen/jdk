@@ -77,6 +77,10 @@ class ShenandoahHeuristics : public CHeapObj<mtGC> {
   static const intx Degenerated_Penalty = 10; // how much to penalize average GC duration history on Degenerated GC
   static const intx Full_Penalty        = 20; // how much to penalize average GC duration history on Full GC
 
+  static intx Surge_Penalty(uint surge) {     // how much to penalize average GC duration history on surged conc gc
+    return surge / 2;
+  }
+
 #ifdef ASSERT
   enum UnionTag {
     is_uninitialized, is_garbage, is_live_data
@@ -89,6 +93,9 @@ protected:
   static const uint Min_Surge_Level        =  1; // 0 denotes no surge, 1 denotes surge of 25%
   static const uint Max_Surge_Level        =  8; // 8 denotes surge of 200%
 
+  // Non-zero means we need to trigger asap if GC is not already running, and we need GC to run at maximum surge
+  // level.  The GC control thread will reset to zero at the end of each GC cycle.
+  size_t _expedite_gc_requests;
   size_t _declined_trigger_count;
   size_t _previous_trigger_declinations;
 
@@ -245,6 +252,15 @@ public:
   
   inline uint get_surge_level() {
     return _surge_level;
+  }
+
+  // if gc is not already running, trigger gc to start asap.
+  inline void expedite_gc() {
+    _expedite_gc_requests++;
+  }
+
+  inline void unexpedite_gc() {
+    _expedite_gc_requests = 0;
   }
 
   // This indicates whether or not the current cycle should unload classes.

@@ -75,6 +75,9 @@ public:
   // like System.gc and "implicit" gc requests, like metaspace oom.
   virtual void request_gc(GCCause::Cause cause) = 0;
 
+  // Stall until GC ready to retry alloc request without initiating degenerated gc.
+  void stall_for_alloc_failure_without_degenerating(ShenandoahAllocRequest& req);
+
   // This cancels the collection cycle and has an option to block
   // until another cycle runs and clears the alloc failure gc flag.
   void handle_alloc_failure(ShenandoahAllocRequest& req, bool block);

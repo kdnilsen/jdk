@@ -115,6 +115,23 @@ bool ShenandoahYoungHeuristics::should_start_gc() {
   ShenandoahOldHeuristics* old_heuristics = old_generation->heuristics();
 
   // Checks that an old cycle has run for at least ShenandoahMinimumOldTimeMs before allowing a young cycle.
+#define KELVIN_DO_NOT_THROTTLE_YOUNG_IF_GC_UNDER_DURESS
+#ifdef KELVIN_DO_NOT_THROTTLE_YOUNG_IF_GC_UNDER_DURESS
+  // This is the new code
+  // Do not defer start of young GC if previous cycle required a surge of GC workers.  Otherwise, the accumulation of
+  // multiple ShenandoahMinimumOldTimeMS delays on consecutive young GC cycles will likely result in an out-of-memory
+  // condition.
+  if ((ShenandoahMinimumOldTimeMs > 0) && (_previous_cycle_max_surge_level == 0)) {
+    if (old_generation->is_preparing_for_mark() || old_generation->is_concurrent_mark_in_progress()) {
+      size_t old_time_elapsed = size_t(old_heuristics->elapsed_cycle_time() * 1000);
+      if (old_time_elapsed < ShenandoahMinimumOldTimeMs) {
+        _declined_trigger_count++;
+        return false;
+      }
+    }
+  }
+#else
+  // This is the original code
   if (ShenandoahMinimumOldTimeMs > 0) {
     if (old_generation->is_preparing_for_mark() || old_generation->is_concurrent_mark_in_progress()) {
       size_t old_time_elapsed = size_t(old_heuristics->elapsed_cycle_time() * 1000);
@@ -124,6 +141,7 @@ bool ShenandoahYoungHeuristics::should_start_gc() {
       }
     }
   }
+#endif
 
   // inherited triggers have already decided to start a cycle, so no further evaluation is required
   if (ShenandoahAdaptiveHeuristics::should_start_gc()) {

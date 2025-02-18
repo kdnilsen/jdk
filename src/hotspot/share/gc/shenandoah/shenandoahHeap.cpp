@@ -958,7 +958,29 @@ HeapWord* ShenandoahHeap::allocate_from_gclab_slow(Thread* thread, size_t size) 
 HeapWord* ShenandoahHeap::allocate_new_tlab(size_t min_size,
                                             size_t requested_size,
                                             size_t* actual_size) {
-  ShenandoahAllocRequest req = ShenandoahAllocRequest::for_tlab(min_size, requested_size);
+#define KELVIN_TLAB_NO_THROTTLE
+#ifdef KELVIN_TLAB_NO_THROTTLE
+  // This is the original behavior
+  size_t constrained_request_size = requested_size;
+#else
+  uint current_surge = young_generation()->heuristics()->get_surge_level();
+  size_t constrained_request_size;
+  if (current_surge > 0) {
+    // If we are surging, the GC is under duress.  Limit the requested size:
+    //     current_surge is 1-2: min_size * 4
+    //     current_surge is 3-4: min_size * 3
+    //     current_surge is 5-6: min_size * 2
+    //     current_surge is 7-8: min_size * 1
+    size_t multiplier = (10 - current_surge) / 2;
+    constrained_request_size = min_size * multiplier;
+    if (constrained_request_size > requested_size) {
+      constrained_request_size = requested_size;
+    }
+  } else {
+    constrained_request_size = requested_size;
+  }
+#endif
+  ShenandoahAllocRequest req = ShenandoahAllocRequest::for_tlab(min_size, constrained_request_size);
   HeapWord* res = allocate_memory(req);
   if (res != nullptr) {
     *actual_size = req.actual_size();
@@ -1010,6 +1032,45 @@ HeapWord* ShenandoahHeap::allocate_memory(ShenandoahAllocRequest& req) {
       return nullptr;
     }
 
+#ifdef KELVIN_DO_NOT_DEGENERATE_FOR_MUTATOR_ALLOC_FAILURE
+    // Note that this new code does not change the OOM condition
+    if (result == nullptr) {
+      // Block until control thread reacted, then retry allocation.
+      //
+      // It might happen that one of the threads requesting allocation would unblock
+      // way later after GC happened, only to fail the second allocation, because
+      // other threads have already depleted the free storage. In this case, a better
+      // strategy is to try again, until at least one full GC has completed.
+      //
+      // Stop retrying and return nullptr to cause OOMError exception if our allocation failed even after:
+      //   a) We experienced a GC that had good progress, or
+      //   b) We experienced at least one Full GC (whether or not it had good progress)
+
+      size_t original_count = shenandoah_policy()->full_gc_count();
+      while ((result == nullptr) && (original_count == shenandoah_policy()->full_gc_count())) {
+        control_thread()->stall_for_alloc_failure_without_degenerating(req);
+        result = allocate_memory_under_lock(req, in_new_region);
+      }
+      if (result != nullptr) {
+        // If our allocation request has been satisifed after it initially failed, we count this as good gc progress
+        notify_gc_progress();
+      }
+      if (log_develop_is_enabled(Debug, gc, alloc)) {
+        ResourceMark rm;
+        log_debug(gc, alloc)("Thread: %s, Result: " PTR_FORMAT ", Request: %s, Size: %zu"
+                             ", Original: %zu, Latest: %zu",
+                             Thread::current()->name(), p2i(result), req.type_string(), req.size(),
+                             original_count, get_gc_no_progress_count());
+      }
+    }
+
+
+
+    }
+
+#else
+    // This is the original code
+
     if (result == nullptr) {
       // Block until control thread reacted, then retry allocation.
       //
@@ -1039,6 +1100,7 @@ HeapWord* ShenandoahHeap::allocate_memory(ShenandoahAllocRequest& req) {
                              original_count, get_gc_no_progress_count());
       }
     }
+#endif
   } else {
     assert(req.is_gc_alloc(), "Can only accept GC allocs here");
     result = allocate_memory_under_lock(req, in_new_region);

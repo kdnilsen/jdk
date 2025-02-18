@@ -46,6 +46,7 @@ int ShenandoahHeuristics::compare_by_garbage(RegionData a, RegionData b) {
 }
 
 ShenandoahHeuristics::ShenandoahHeuristics(ShenandoahSpaceInfo* space_info) :
+  _expedite_gc_requests(0),
   _declined_trigger_count(0),
   _previous_trigger_declinations(0),
   _space_info(space_info),
@@ -242,6 +243,12 @@ bool ShenandoahHeuristics::should_start_gc() {
       return true;
     }
   }
+  if (_expedite_gc_requests > 0) {
+    _previous_trigger_declinations = _declined_trigger_count;
+    _declined_trigger_count = 0;
+    return true;
+  }
+
   _declined_trigger_count++;
   return false;
 }
@@ -300,7 +307,11 @@ void ShenandoahHeuristics::record_success_concurrent() {
 #endif
   _gc_cycle_time_history->add(cycle_time);
   _gc_times_learned++;
-  adjust_penalty(Concurrent_Adjust);
+  if (_surge_level >= Min_Surge_Level) {
+    adjust_penalty(Surge_Penalty(_surge_level));
+  } else {
+    adjust_penalty(Concurrent_Adjust);
+  }
 }
 
 void ShenandoahHeuristics::record_success_degenerated() {
