@@ -113,6 +113,8 @@ public:
 void ShenandoahCodeRoots::disarm_nmethods() {
   if (use_nmethod_barriers_for_mark()) {
     ShenandoahDisarmNMethodsTask task;
+    assert(SafepointSynchronize::is_at_safepoint(), "Must be at safepoint");
+    // Using all parallel workers
     ShenandoahHeap::heap()->workers()->run_task(&task);
   }
 }

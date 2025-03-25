@@ -84,6 +84,10 @@ void ShenandoahDegenGC::entry_degenerated() {
   heap->set_degenerated_gc_in_progress(true);
   op_degenerated();
   heap->set_degenerated_gc_in_progress(false);
+  {
+    ShenandoahTimingsTracker timing(ShenandoahPhaseTimings::degen_gc_propagate_gc_state);
+    heap->propagate_gc_state_to_all_threads();
+  }
 }
 
 void ShenandoahDegenGC::op_degenerated() {
@@ -134,7 +138,7 @@ void ShenandoahDegenGC::op_degenerated() {
 
       if (heap->mode()->is_generational() && _generation->is_young()) {
         // Swap remembered sets for young
-        _generation->swap_remembered_set();
+        _generation->swap_card_tables();
       }
 
     case _degenerated_roots:
@@ -166,7 +170,7 @@ void ShenandoahDegenGC::op_degenerated() {
           // We only need this if the concurrent cycle has already swapped the card tables.
           // Marking will use the 'read' table, but interesting pointers may have been
           // recorded in the 'write' table in the time between the cancelled concurrent cycle
-          // and this degenerated cycle. These pointers need to be included the 'read' table
+          // and this degenerated cycle. These pointers need to be included in the 'read' table
           // used to scan the remembered set during the STW mark which follows here.
           _generation->merge_write_table();
         }
@@ -313,7 +317,7 @@ void ShenandoahDegenGC::op_degenerated() {
   // Shenandoah so as to avoid introducing "surprising new behavior."  It also makes less sense with non-generational
   // Shenandoah to replace a full GC with a degenerated GC, because both have similar pause times in non-generational
   // mode.
-  if (!metrics.is_good_progress()) {
+  if (!metrics.is_good_progress(_generation)) {
     _consecutive_degen_with_bad_progress++;
   } else {
     _consecutive_degen_with_bad_progress = 0;
@@ -410,7 +414,7 @@ void ShenandoahDegenGC::op_evacuate() {
 void ShenandoahDegenGC::op_init_update_refs() {
   // Evacuation has completed
   ShenandoahHeap* const heap = ShenandoahHeap::heap();
-  heap->prepare_update_heap_references(false /*concurrent*/);
+  heap->prepare_update_heap_references();
   heap->set_update_refs_in_progress(true);
 }
 
