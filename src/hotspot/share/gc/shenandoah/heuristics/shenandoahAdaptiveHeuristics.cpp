@@ -375,6 +375,7 @@ void ShenandoahAdaptiveHeuristics::record_success_degenerated() {
   // either of them should have triggered earlier to avoid this case.
   adjust_margin_of_error(DEGENERATE_PENALTY_SD);
   adjust_spike_threshold(DEGENERATE_PENALTY_SD);
+
   // If we had to degenerate, that's as if we were surging at max level
   _previous_cycle_max_surge_level = 4;
   _surge_level = 0;
@@ -386,7 +387,8 @@ void ShenandoahAdaptiveHeuristics::record_success_full() {
   // either of them should have triggered earlier to avoid this case.
   adjust_margin_of_error(FULL_PENALTY_SD);
   adjust_spike_threshold(FULL_PENALTY_SD);
-  // If we escalasetd to full gc, that's as if we were surging at max level
+
+  // If we escalated to full gc, that's as if we were surging at max level
   _previous_cycle_max_surge_level = 4;
   _surge_level = 0;
 }
