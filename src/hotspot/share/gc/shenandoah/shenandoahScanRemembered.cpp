@@ -615,8 +615,6 @@ void ShenandoahDirectCardMarkRememberedSet::merge_write_table(HeapWord* start, s
   for (size_t i = 0; i < num; i++) {
     read_table[i] &= write_table[i];
   }
-
-  log_info(gc, remset)("Finished merging write_table into read_table.");
 }
 
 void ShenandoahDirectCardMarkRememberedSet::swap_card_tables() {

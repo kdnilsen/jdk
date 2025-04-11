@@ -66,10 +66,6 @@ inline ShenandoahHeapRegion* ShenandoahRegionIterator::next() {
 }
 
 inline WorkerThreads* ShenandoahHeap::workers() const {
-#ifdef KELVIN_TO_FIX
-  // This is apprently where we need to surge (or not) _workers.  In
-  // most recent encarnation, all workers are apparently provided from here.
-#endif
   return _workers;
 }
 

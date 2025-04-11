@@ -259,9 +259,13 @@ public:
   //  1:  25% surge (e.g. 4 concurrent worker threads becomes 5)
   //  2:  50% surge (e.g. 4 concurrent worker threads becomes 6)
   //  3:  75% surge (e.g. 4 concurrent worker threads becomes 7)
-  //  4: 100% surge (e.g. 4 concurrent worker threads becomes 8, i.e. all Parallel threads)
+  //  4: 100% surge (e.g. 4 concurrent worker threads becomes 8)
+  //  5: 125% surge (e.g. 4 concurrent worker threads becomes 9)
+  //  6: 150% surge (e.g. 4 concurrent worker threads becomes 10)
+  //  7: 175% surge (e.g. 4 concurrent worker threads becomes 11)
+  //  8: 200% surge (e.g. 4 concurrent worker threads becomes 12)
   virtual uint should_surge_phase(ShenandoahGCStage phase, double now) {
-    // Only adaptive heuristics will return non-zero.
+    // Only adaptive and old heuristics will return non-zero.
     return 0;
   }
 

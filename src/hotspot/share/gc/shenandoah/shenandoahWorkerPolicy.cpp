@@ -38,7 +38,9 @@ uint ShenandoahWorkerPolicy::calc_workers_for_any_concurrent_phase(ShenandoahHeu
   assert (surge_level <= ShenandoahHeuristics::max_surge_level(), "sanity");
 
   active_workers = (uint) (ConcGCThreads * (1.0 + surge_level * 0.25));
-  assert(active_workers <= ParallelGCThreads, "Cannot surge beyond ParallelGCThreads");
+  if (active_workers > ParallelGCThreads) {
+    active_workers = ParallelGCThreads;
+  }
   if (surge_level > 0) {
     log_info(gc)("Surging to level %u, workers: %u", surge_level, active_workers);
   }
