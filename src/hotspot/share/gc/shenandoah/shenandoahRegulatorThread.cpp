@@ -61,6 +61,10 @@ void ShenandoahRegulatorThread::regulate_young_and_old_cycles() {
   while (!should_terminate()) {
     ShenandoahGenerationalControlThread::GCMode mode = _control_thread->gc_mode();
     if (mode == ShenandoahGenerationalControlThread::none) {
+#undef KELVIN_REGULATOR
+#ifdef KELVIN_REGULATOR
+      log_info(gc)("Regulator mode is none");
+#endif
       if (should_start_metaspace_gc()) {
         if (request_concurrent_gc(_heap->global_generation())) {
           // Some of vmTestbase/metaspace tests depend on following line to count GC cycles
@@ -68,25 +72,24 @@ void ShenandoahRegulatorThread::regulate_young_and_old_cycles() {
           _global_heuristics->cancel_trigger_request();
         }
       } else {
-        if (_young_heuristics->should_start_gc()) {
-          // Give the old generation a chance to run. The old generation cycle
-          // begins with a 'bootstrap' cycle that will also collect young.
-          if (start_old_cycle()) {
-            log_debug(gc)("Heuristics request for old collection accepted");
-            _young_heuristics->cancel_trigger_request();
-            _old_heuristics->cancel_trigger_request();
-          } else if (request_concurrent_gc(_heap->young_generation())) {
-            log_debug(gc)("Heuristics request for young collection accepted");
-            _young_heuristics->cancel_trigger_request();
-          }
-        } else if (_old_heuristics->should_resume_old_cycle() || _old_heuristics->should_start_gc()) {
+        if (_old_heuristics->should_resume_old_cycle()) {
           if (request_concurrent_gc(_heap->old_generation())) {
             _old_heuristics->cancel_trigger_request();
             log_debug(gc)("Heuristics request to resume old collection accepted");
           }
+        } else if (start_old_cycle()) {
+          log_debug(gc)("Heuristics request for old collection accepted");
+          _young_heuristics->cancel_trigger_request();
+          _old_heuristics->cancel_trigger_request();
+        } else if (start_young_cycle()) {
+          log_debug(gc)("Heuristics request for young collection accepted");
+          _young_heuristics->cancel_trigger_request();
         }
       }
     } else if (mode == ShenandoahGenerationalControlThread::servicing_old) {
+#ifdef KELVIN_REGULATOR
+      log_info(gc)("Regulator mode is servicing_old");
+#endif
       if (start_young_cycle()) {
         log_debug(gc)("Heuristics request to interrupt old for young collection accepted");
         _young_heuristics->cancel_trigger_request();

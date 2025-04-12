@@ -102,6 +102,10 @@ public:
 
   // Returns the current state of the control thread
   GCMode gc_mode() const {
+#undef KELVIN_H_GC_MODE
+#ifdef KELVIN_H_GC_MODE
+    log_info(gc)("KELVIN gc_mode is: %s", gc_mode_name(_gc_mode));
+#endif
     return _gc_mode;
   }
 private:

@@ -631,10 +631,17 @@ void ShenandoahGenerationalControlThread::service_stw_full_cycle(GCCause::Cause 
   _degen_point = ShenandoahGC::_degenerated_unset;
 }
 
+#undef KELVIN_GCT_REQUEST
+
+
 void ShenandoahGenerationalControlThread::service_stw_degenerated_cycle(const ShenandoahGCRequest& request) {
   assert(_degen_point != ShenandoahGC::_degenerated_unset, "Degenerated point should be set");
 
   GCIdMark gc_id_mark;
+#ifdef KELVIN_GCT_REQUEST
+  log_info(gc)("KELVIN_GCT::service_stw_degen start, mode is %s",  gc_mode_name(_gc_mode));
+#endif
+
   request.generation->heuristics()->record_degenerated_cycle_start(ShenandoahGC::ShenandoahDegenPoint::_degenerated_outside_cycle
                                                                   == _degen_point);
   ShenandoahGCSession session(request.cause, request.generation);
@@ -652,10 +659,18 @@ void ShenandoahGenerationalControlThread::service_stw_degenerated_cycle(const Sh
     if (old->is_bootstrapping()) {
       old->transition_to(ShenandoahOldGeneration::MARKING);
     }
+#ifdef KELVIN_GCT_REQUEST
+    log_info(gc)("KELVIN_GCT::@ end of service_stw_degen start, mode is %s",  gc_mode_name(_gc_mode));
+#endif
   }
 }
 
 void ShenandoahGenerationalControlThread::request_gc(GCCause::Cause cause) {
+#ifdef KELVIN_GCT_REQUEST
+  log_info(gc)("KELVIN_GCT::request_gc(), mode is: %s, generation is: %s", gc_mode_name(_gc_mode),
+               (_requested_generation == nullptr)? "nullptr": _requested_generation->name());
+#endif
+
   if (ShenandoahCollectorPolicy::is_allocation_failure(cause)) {
     // GC should already be cancelled. Here we are just notifying the control thread to
     // wake up and handle the cancellation request, so we don't need to set _requested_gc_cause.
@@ -663,6 +678,9 @@ void ShenandoahGenerationalControlThread::request_gc(GCCause::Cause cause) {
   } else if (ShenandoahCollectorPolicy::should_handle_requested_gc(cause)) {
     handle_requested_gc(cause);
   }
+#ifdef KELVIN_GCT_REQUEST
+  log_info(gc)("KELVIN_GCT::@ end of request_gc(), mode is: %s", gc_mode_name(_gc_mode));
+#endif
 }
 
 bool ShenandoahGenerationalControlThread::request_concurrent_gc(ShenandoahGeneration* generation) {
@@ -795,6 +813,10 @@ void ShenandoahGenerationalControlThread::set_gc_mode(GCMode new_mode) {
 
 void ShenandoahGenerationalControlThread::set_gc_mode(MonitorLocker& ml, GCMode new_mode) {
   if (_gc_mode != new_mode) {
+#undef KELVIN_GC_MODE
+#ifdef KELVIN_GC_MODE
+    log_info(gc)("KELVIN Transition from: %s to: %s", gc_mode_name(_gc_mode), gc_mode_name(new_mode));
+#endif
     log_debug(gc, thread)("Transition from: %s to: %s", gc_mode_name(_gc_mode), gc_mode_name(new_mode));
     EventMark event("Control thread transition from: %s, to %s", gc_mode_name(_gc_mode), gc_mode_name(new_mode));
     _gc_mode = new_mode;
