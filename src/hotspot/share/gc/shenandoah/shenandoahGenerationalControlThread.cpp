@@ -233,6 +233,8 @@ void ShenandoahGenerationalControlThread::run_gc_cycle(const ShenandoahGCRequest
   // GC is starting, bump the internal ID
   update_gc_id();
 
+  GCIdMark gc_id_mark;
+
   _heap->reset_bytes_allocated_since_gc_start();
 
   MetaspaceCombinedStats meta_sizes = MetaspaceUtils::get_combined_statistics();
@@ -263,7 +265,6 @@ void ShenandoahGenerationalControlThread::run_gc_cycle(const ShenandoahGCRequest
       }
       case servicing_old: {
         assert(request.generation->is_old(), "Expected old generation here");
-        GCIdMark gc_id_mark;
         service_concurrent_old_cycle(request);
         break;
       }
@@ -386,7 +387,6 @@ void ShenandoahGenerationalControlThread::process_phase_timings() const {
 //      +--->  Global Degen +--------------------> Full <----+
 //
 void ShenandoahGenerationalControlThread::service_concurrent_normal_cycle(const ShenandoahGCRequest& request) {
-  GCIdMark gc_id_mark;
   log_info(gc, ergo)("Start GC cycle (%s)", request.generation->name());
   if (request.generation->is_old()) {
     service_concurrent_old_cycle(request);
@@ -623,7 +623,6 @@ bool ShenandoahGenerationalControlThread::check_cancellation_or_degen(Shenandoah
 }
 
 void ShenandoahGenerationalControlThread::service_stw_full_cycle(GCCause::Cause cause) {
-  GCIdMark gc_id_mark;
   ShenandoahGCSession session(cause, _heap->global_generation());
   maybe_set_aging_cycle();
   ShenandoahFullGC gc;
@@ -637,14 +636,12 @@ void ShenandoahGenerationalControlThread::service_stw_full_cycle(GCCause::Cause 
 void ShenandoahGenerationalControlThread::service_stw_degenerated_cycle(const ShenandoahGCRequest& request) {
   assert(_degen_point != ShenandoahGC::_degenerated_unset, "Degenerated point should be set");
 
-  GCIdMark gc_id_mark;
 #ifdef KELVIN_GCT_REQUEST
   log_info(gc)("KELVIN_GCT::service_stw_degen start, mode is %s",  gc_mode_name(_gc_mode));
 #endif
-
+  ShenandoahGCSession session(request.cause, request.generation);
   request.generation->heuristics()->record_degenerated_cycle_start(ShenandoahGC::ShenandoahDegenPoint::_degenerated_outside_cycle
                                                                   == _degen_point);
-  ShenandoahGCSession session(request.cause, request.generation);
   ShenandoahDegenGC gc(_degen_point, request.generation);
   gc.collect(request.cause);
   _degen_point = ShenandoahGC::_degenerated_unset;

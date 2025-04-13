@@ -300,7 +300,7 @@ jint ShenandoahHeap::initialize() {
                                           bitmap_size_orig, bitmap_page_size,
                                           bitmap.base(),
                                           bitmap.size(), bitmap.page_size());
-  MemTracker::record_virtual_memory_tag(bitmap.base(), mtGC);
+  MemTracker::record_virtual_memory_tag(bitmap, mtGC);
   _bitmap_region = MemRegion((HeapWord*) bitmap.base(), bitmap.size() / HeapWordSize);
   _bitmap_region_special = bitmap.special();
 
@@ -324,7 +324,7 @@ jint ShenandoahHeap::initialize() {
       os::commit_memory_or_exit(verify_bitmap.base(), verify_bitmap.size(), bitmap_page_size, false,
                                 "Cannot commit verification bitmap memory");
     }
-    MemTracker::record_virtual_memory_tag(verify_bitmap.base(), mtGC);
+    MemTracker::record_virtual_memory_tag(verify_bitmap, mtGC);
     MemRegion verify_bitmap_region = MemRegion((HeapWord *) verify_bitmap.base(), verify_bitmap.size() / HeapWordSize);
     _verification_bit_map.initialize(_heap_region, verify_bitmap_region);
     _verifier = new ShenandoahVerifier(this, &_verification_bit_map);
@@ -338,7 +338,7 @@ jint ShenandoahHeap::initialize() {
                                           bitmap_size_orig, aux_bitmap_page_size,
                                           aux_bitmap.base(),
                                           aux_bitmap.size(), aux_bitmap.page_size());
-  MemTracker::record_virtual_memory_tag(aux_bitmap.base(), mtGC);
+  MemTracker::record_virtual_memory_tag(aux_bitmap, mtGC);
   _aux_bitmap_region = MemRegion((HeapWord*) aux_bitmap.base(), aux_bitmap.size() / HeapWordSize);
   _aux_bitmap_region_special = aux_bitmap.special();
   _aux_bit_map.initialize(_heap_region, _aux_bitmap_region);
@@ -356,7 +356,7 @@ jint ShenandoahHeap::initialize() {
                                           region_storage_size_orig, region_page_size,
                                           region_storage.base(),
                                           region_storage.size(), region_storage.page_size());
-  MemTracker::record_virtual_memory_tag(region_storage.base(), mtGC);
+  MemTracker::record_virtual_memory_tag(region_storage, mtGC);
   if (!region_storage.special()) {
     os::commit_memory_or_exit(region_storage.base(), region_storage_size, region_page_size, false,
                               "Cannot commit region memory");
@@ -420,9 +420,6 @@ jint ShenandoahHeap::initialize() {
 
       _affiliations[i] = ShenandoahAffiliation::FREE;
     }
-
-    // Initialize to complete
-    _marking_context->mark_complete();
   }
 
   if (AlwaysPreTouch) {
@@ -672,6 +669,12 @@ void ShenandoahHeap::print_on(outputStream* st) const {
     st->cr();
     print_heap_regions_on(st);
   }
+}
+
+void ShenandoahHeap::print_on_error(outputStream* st) const {
+  print_on(st);
+  st->cr();
+  print_heap_regions_on(st);
 }
 
 class ShenandoahInitWorkerGCLABClosure : public ThreadClosure {
@@ -2200,8 +2203,8 @@ size_t ShenandoahHeap::tlab_used(Thread* thread) const {
 }
 
 bool ShenandoahHeap::try_cancel_gc(GCCause::Cause cause) {
-  jbyte prev = _cancelled_gc.cmpxchg(cause, GCCause::_no_gc);
-  return prev == GCCause::_no_gc;
+  const GCCause::Cause prev = _cancelled_gc.xchg(cause);
+  return prev == GCCause::_no_gc || prev == GCCause::_shenandoah_concurrent_gc;
 }
 
 void ShenandoahHeap::cancel_concurrent_mark() {
@@ -2616,12 +2619,6 @@ void ShenandoahHeap::rebuild_free_set(bool concurrent) {
 #ifdef KELVIN_DEPRECATE
   start_idle_span();
 #endif
-}
-
-void ShenandoahHeap::print_extended_on(outputStream *st) const {
-  print_on(st);
-  st->cr();
-  print_heap_regions_on(st);
 }
 
 bool ShenandoahHeap::is_bitmap_slice_committed(ShenandoahHeapRegion* r, bool skip_self) {
