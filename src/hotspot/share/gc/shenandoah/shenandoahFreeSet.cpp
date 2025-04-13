@@ -1774,7 +1774,7 @@ void ShenandoahFreeSet::compute_young_and_old_reserves(size_t young_cset_regions
   if (old_reserve_result >
       _partitions.capacity_of(ShenandoahFreeSetPartitionId::OldCollector) + old_unaffiliated_regions * region_size_bytes) {
     old_reserve_result =
-      _partitions.capacity_of(ShenandoahFreeSetPartitionId::OldCollector) + old_unaffiliated_regions * region_size_bytes;
+      _partitions.available_in(ShenandoahFreeSetPartitionId::OldCollector) + old_unaffiliated_regions * region_size_bytes;
 #ifdef KELVIN_VISIBLE
     log_info(gc)("Downsizing old_reserve_result to: %zu", old_reserve_result);
 #endif
