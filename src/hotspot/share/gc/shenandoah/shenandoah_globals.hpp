@@ -34,8 +34,8 @@
                             range,                                          \
                             constraint)                                     \
                                                                             \
-  product(uintx, ShenandoahRateAccelerationSampleSize, 6, EXPERIMENTAL,     \
-          "In selected ShenandoahControlIntervals (if 2 ms has passed "     \
+  product(uintx, ShenandoahRateAccelerationSampleSize, 8, EXPERIMENTAL,     \
+          "In selected ShenandoahControlIntervals (if 5 ms has passed "     \
           "since previous control interval executed), "                     \
           "we compute the allocation rate since the previous rate was "     \
           "sampled.  This many samples are analyzed to determine whether "  \
@@ -50,7 +50,7 @@
                                                                             \
   product(uintx, ShenandoahMomentaryAllocationRateSpikeSampleSize,          \
           4, EXPERIMENTAL,                                                  \
-          "In selected ShenandoahControlIntervals (if 2 ms has passed "     \
+          "In selected ShenandoahControlIntervals (if 5 ms has passed "     \
           "since previous control interval executed), we compute "          \
           "the allocation rate since the previous rate was sampled. "       \
           "The weighted average of this "                                   \

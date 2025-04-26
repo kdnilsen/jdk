@@ -733,6 +733,9 @@ uint ShenandoahOldHeuristics::should_surge() {
     if (surge > max_surge_level()) {
       surge = max_surge_level();
     }
+    if (ConcGCThreads * (1 + surge * 0.25) > ParallelGCThreads) {
+      surge = (uint) (((((double) ParallelGCThreads) / ConcGCThreads) - 1.0) / 0.25);
+    }
   } else {
     surge = 0;
   }
