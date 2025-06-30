@@ -34,7 +34,7 @@
                             range,                                          \
                             constraint)                                     \
                                                                             \
-  product(uintx, ShenandoahGenerationalMinPIPUsage, 60, EXPERIMENTAL,       \
+  product(uintx, ShenandoahGenerationalMinPIPUsage, 30, EXPERIMENTAL,       \
           "(Generational mode only) What percent of a heap region "         \
           "should be used before we consider promoting a region in "        \
           "place?  Regions with less than this amount of used will "        \
