@@ -608,7 +608,7 @@ bool ShenandoahAdaptiveHeuristics::should_start_gc() {
     // sizes are more susceptible to false triggers based on random noise.  The default configuration uses a sample size of 5,
     // spanning 15ms of execution.
 
-    // The test (allocated > available / 3) below is intended to prevent accelerated triggers from firing so quickly that there
+    // The test (3 * allocated > available) below is intended to prevent accelerated triggers from firing so quickly that there
     // has not been sufficient time to create garbage that can be reclaimed during the triggered GC cycle.  If we trigger before
     // garbage has been created, the concurrent GC will find no garbage.  This has been observed to result in degens which
     // experience OOM during evac or that experiene "bad progress", both of which escalate to Full GC.  Note that garbage that
@@ -628,11 +628,11 @@ bool ShenandoahAdaptiveHeuristics::should_start_gc() {
     //              Since A+V equals R, we have: A + 3A > A + V  = R
     //                     which is to say that:      A > R/4
     //
-    // Postponing the trigger until at least 1/4 of the runway has been consumed helps to improve the efficiency of the 
+    // Postponing the trigger until at least 1/4 of the runway has been consumed helps to improve the efficiency of the
     // triggered GC.  Under heavy steady state workload, this delay condition generally has no effect: if the allocation
     // runway is divided "equally" between the current GC and the next GC, then at any potential trigger point (which cannot
     // happen any sooner than completion of the first GC), it is already the case that roughly A > R/2.
-    if ((allocated > available / 3) && (consumption_accelerated > allocatable_words)) {
+    if ((3 * allocated > available) && (consumption_accelerated > allocatable_words)) {
       size_t size_t_alloc_rate = (size_t) current_rate_by_acceleration * HeapWordSize;
       if (acceleration > 0) {
         size_t size_t_acceleration = (size_t) acceleration * HeapWordSize;
