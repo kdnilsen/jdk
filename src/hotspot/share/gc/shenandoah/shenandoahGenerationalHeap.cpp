@@ -703,7 +703,18 @@ void ShenandoahGenerationalHeap::compute_old_generation_balance(size_t mutator_x
     // get_promotion_potential() only knows the total live memory contained within young-generation regions whose age is
     // tenurable. It does not know whether that memory will still be live at the end of the next mark cycle, and it doesn't
     // know how much memory is contained within objects whose individual ages are tenurable, which reside in regions with
-    // non-tenurable age.
+    // non-tenurable age.  We use this, as adjusted by ShenandoahPromoEvacWaste, as an approximation of the total amount of
+    // memory to be promoted.  In the near future, we expect to implement a change that will allow get_promotion_potential()
+    // to account also for the total memory contained within individual objects that are tenure-ready even when they do
+    // not reside in aged regions.  This will represent a conservative over approximation of promotable memory because
+    // some of these objects may die before the next GC cycle executes.
+
+    // Be careful not to ask for too much promotion reserves. We have observed jtreg test failures under which a greedy
+    // promotion reserve causes a humongous allocation which is awaiting a full GC to fail (specifically
+    // gc/TestAllocHumongousFragment.java). This happens if too much of the memory reclaimed by the full GC
+    // is immediately reserved so that it cannot be allocated by the waiting mutator. It's not clear that this
+    // particular test is representative of the needs of typical GenShen users.  It is really a test of high frequency
+    // Full GCs under heap fragmentation stress.
 
     size_t promo_need = (size_t) (promo_load * ShenandoahPromoEvacWaste);
     if (promo_need > reserve_for_promo) {
