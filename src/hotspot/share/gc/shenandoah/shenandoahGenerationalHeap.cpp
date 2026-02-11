@@ -646,23 +646,20 @@ void ShenandoahGenerationalHeap::compute_old_generation_balance(size_t mutator_x
     // best of the situation by using this fragmented memory for both promotions and evacuations.
 
     proposed_max_old = old_fragmented_available;
-    // reserve_for_promo equals old_fragmented_available, and memory available for mixed evacuations is zero.
   }
   // Otherwise: old_fragmented_available <= proposed_max_old. Do not shrink proposed_max_old from the original computation.
-  // In this case, reserve_for_promo is a portion of proposed_max_old and the old memory available for mixed evacuations
-  // is proposed_max_old - old_fragmented_available.
 
-  // Below, if we are doing mixed evacuations, we will have an opportunity to set aside memory for mixed evacuations,
-  // possibly shrinking reserve_for_promo.  If we are not doing mixed evacuations, we will have opportunity to expand
-  // reserve_for_promo.
+  // Though we initially set reserve_for_promo to equal the entirety of old fragmented available, we have the opportunity
+  // below to shift some of this memory into the reserve_for_mixed.
   size_t reserve_for_promo = old_fragmented_available;
   const size_t max_old_reserve = proposed_max_old;
 
   const size_t mixed_candidate_live_memory = old_generation()->unprocessed_collection_candidates_live_memory();
   const bool doing_mixed = (mixed_candidate_live_memory > 0);
   if (doing_mixed) {
-    // We want this much memory to be unfragmented in order to reliably evacuate old.  This is conservative because we
-    // may not evacuate the entirety of unprocessed candidates in a single mixed evacuation.
+    // In the ideal, all of the memory reserved for mixed evacuation would be unfragmented, but we don't enforce
+    // this.  Note that the initial value of  max_evac_need is conservative because we may not evacuate all of the
+    // remaining mixed evacuation candidates in a single cycle.
     const size_t max_evac_need = (size_t) (mixed_candidate_live_memory * ShenandoahOldEvacWaste);
     assert(old_available >= old_generation()->free_unaffiliated_regions() * region_size_bytes,
            "Unaffiliated available must be less than total available");
