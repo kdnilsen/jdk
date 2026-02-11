@@ -46,6 +46,7 @@ bool ShenandoahMetricsSnapshot::is_good_progress() const {
   const bool prog_free = free_actual >= free_expected;
   log_info(gc, ergo)("%s progress for free space: " PROPERFMT ", need " PROPERFMT,
                      prog_free ? "Good" : "Bad", PROPERFMTARGS(free_actual), PROPERFMTARGS(free_expected));
+
   if (!prog_free) {
     return false;
   }
@@ -57,6 +58,7 @@ bool ShenandoahMetricsSnapshot::is_good_progress() const {
   const bool prog_used = progress_actual >= progress_expected;
   log_info(gc, ergo)("%s progress for used space: " PROPERFMT ", need " PROPERFMT,
                      prog_used ? "Good" : "Bad", PROPERFMTARGS(progress_actual), PROPERFMTARGS(progress_expected));
+
   if (prog_used) {
     return true;
   }

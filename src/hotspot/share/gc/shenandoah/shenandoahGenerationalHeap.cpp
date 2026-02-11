@@ -646,22 +646,17 @@ void ShenandoahGenerationalHeap::compute_old_generation_balance(size_t mutator_x
     // best of the situation by using this fragmented memory for both promotions and evacuations.
 
     proposed_max_old = old_fragmented_available;
+    // reserve_for_promo equals old_fragmented_available, and memory available for mixed evacuations is zero.
   }
+  // Otherwise: old_fragmented_available <= proposed_max_old. Do not shrink proposed_max_old from the original computation.
+  // In this case, reserve_for_promo is a portion of proposed_max_old and the old memory available for mixed evacuations
+  // is proposed_max_old - old_fragmented_available.
+
+  // Below, if we are doing mixed evacuations, we will have an opportunity to set aside memory for mixed evacuations,
+  // possibly shrinking reserve_for_promo.  If we are not doing mixed evacuations, we will have opportunity to expand
+  // reserve_for_promo.
   size_t reserve_for_promo = old_fragmented_available;
   const size_t max_old_reserve = proposed_max_old;
-
-  // KELVIN WONDERS:
-  //  WHAT IF old_fragmented_available <= proposed_max_old?
-  // In that case:
-  //   We do not shrink proposed_max_old from the original computation
-  //   We leave max_old_reserve as a smaller fraction of proposed_max_old
-  //   Below, if doing_mixed, we should choose either to:
-  //     a) Expand reserve_for_promo, or
-  //     b) Shrink max_old_reserve?
-
-  // DO WE NEED TO CHECK bound_on_old_reserve?  I think not at this time.
-  //   proposed_max_old was initialized to be no larger than bound_on_old_reserve
-  //   we only increase proposed_max_old to equal old_fragmented_available if that is greater
 
   const size_t mixed_candidate_live_memory = old_generation()->unprocessed_collection_candidates_live_memory();
   const bool doing_mixed = (mixed_candidate_live_memory > 0);
@@ -678,12 +673,8 @@ void ShenandoahGenerationalHeap::compute_old_generation_balance(size_t mutator_x
     if (reserve_for_mixed + reserve_for_promo > max_old_reserve) {
       // We're trying to reserve more memory than is available.  So we need to shrink our reserves.
       size_t excess_reserves = (reserve_for_mixed + reserve_for_promo) - max_old_reserve;
-
-      // KELVIN SUSPECTS PROBLEM IS HERE.
-
-      // We need to shrink reserves by excess_reserves.  We prefer to shrink by reducing promotion, giving priority
-      // to mixed evacuation.  If the promotion reserve is larger than the amount we need to shrink by, do all the
-      // shrinkage there.
+      // We need to shrink reserves by excess_reserves.  We prefer to shrink by reducing promotion, giving priority to mixed
+      // evacuation.  If the promotion reserve is larger than the amount we need to shrink by, do all the shrinkage there.
       if (reserve_for_promo > excess_reserves) {
         reserve_for_promo -= excess_reserves;
       } else {
@@ -692,49 +683,39 @@ void ShenandoahGenerationalHeap::compute_old_generation_balance(size_t mutator_x
         reserve_for_promo = 0;
         reserve_for_mixed -= excess_reserves;
       }
-
-      // KELVIN WANTS TO ASSERT THAT:
-      //  (reserve_for_mixed + reserve_for_promo <= max_old_reserve)
-      // Note that max_old_reserve
     }
   }
-  // KELVIN SAYS, WHAT IF WE'RE NOT DOING MIXED?  MAYBE THIS IS WHERE WE STILL NEED TO SHRINK reserve_for_promo?
-  // SHOULD WE ASSERT HERE THAT
-  //  (reserve_for_mixed + reserve_for_promo <= max_old_reserve)
-  // BUT THIS SHOULD BE TRIVIALLY TRUE, BECAUSE WE HAVE
-  //   reserve_for_promo = old_fragmented_available
-  //   max_old_reserve = proposed_max_old
-  //   proposed_max_old >= old_fragmented_available
-  //   reserve_for_mixed = 0
-
-
+  assert(reserve_for_mixed + reserve_for_promo <= max_old_reserve, "sanity");
 
   // Decide how much additional space we should reserve for promotions from young.  We give priority to mixed evacations
   // over promotions.
   const size_t promo_load = old_generation()->get_promotion_potential();
   const bool doing_promotions = promo_load > 0;
+
+  // promo_load represents the combined total of live memory within regions that have reached tenure age.  The true
+  // promotion potential is larger than this, because individual objects within regions that have not yet reached tenure
+  // age may be promotable. On the other hand, some of the objects that we intend to promote in the next GC cycle may
+  // die before they are next marked.  In the future, the promo_load will include the total size of tenurable objects
+  // residing in regions that have not yet reached tenure age.
+
   if (doing_promotions) {
-    // We've already set aside all of the fragmented available memory within old-gen to represent old objects
-    // to be promoted from young generation.  promo_load represents the memory that we anticipate to be promoted
-    // from regions that have reached tenure age.  In the ideal, we will always use fragmented old-gen memory
-    // to hold individually promoted objects and will use unfragmented old-gen memory to represent the old-gen
-    // evacuation workloa.
+    // We are always doing promotions, even when old_generation->get_promotion_potential() returns 0.  As currently implemented,
+    // get_promotion_potential() only knows the total live memory contained within young-generation regions whose age is
+    // tenurable. It does not know whether that memory will still be live at the end of the next mark cycle, and it doesn't
+    // know how much memory is contained within objects whose individual ages are tenurable, which reside in regions with
+    // non-tenurable age.
 
-    // We're promoting and have an estimate of memory to be promoted from aged regions
-
-    // KELVIN NOTES THAT THS ASSERT WAS SUCCESSFUL
-    assert(max_old_reserve >= (reserve_for_mixed + reserve_for_promo), "Sanity");
-    const size_t available_for_additional_promotions = max_old_reserve - (reserve_for_mixed + reserve_for_promo);
-    size_t promo_need = (size_t)(promo_load * ShenandoahPromoEvacWaste);
+    size_t promo_need = (size_t) (promo_load * ShenandoahPromoEvacWaste);
     if (promo_need > reserve_for_promo) {
-      reserve_for_promo += MIN2(promo_need - reserve_for_promo, available_for_additional_promotions);
+      const size_t available_for_additional_promotions = max_old_reserve - (reserve_for_mixed + reserve_for_promo);
+      if (reserve_for_promo + available_for_additional_promotions >= promo_need) {
+        reserve_for_promo = promo_need;
+      } else {
+        reserve_for_promo += available_for_additional_promotions;
+      }
     }
-    // We've already reserved all the memory required for the promo_load, and possibly more.  The excess
-    // can be consumed by objects promoted from regions that have not yet reached tenure age.
-
-    // KELVIN NOTES THAT WE ARE INCREASING reserve_for_promo here
-    // BUT WE ARE NOT INCREASING old_available
   }
+  // else, leave reserve_for_promo as is.  By default, it is initialized to represent old_fragmented_available.
 
   // This is the total old we want to reserve (initialized to the ideal reserve)
   size_t old_reserve = reserve_for_mixed + reserve_for_promo;
@@ -746,15 +727,6 @@ void ShenandoahGenerationalHeap::compute_old_generation_balance(size_t mutator_x
   size_t mutator_region_xfer_limit = mutator_xfer_limit / region_size_bytes;
   // align the mutator_xfer_limit on region size
   mutator_xfer_limit = mutator_region_xfer_limit * region_size_bytes;
-
-  // KELVIN WANTS TO ASSERT HERE THE SAME THINK THAT IS ASSERTED BELOW (AND FAILS):
-  // assert(young_reserve + reserve_for_mixed + reserve_for_promo <= old_available + young_available,
-  //         "Cannot reserve more memory than is available: %zu + %zu + %zu <= %zu + %zu",
-  //         young_reserve, reserve_for_mixed, reserve_for_promo, old_available, young_available);
-  // if it succeeds here and fails below, that means we screwed up the adjustments.
-
-  // KELVIN SUSPICION:
-  //  When I am setting region_balance() below, I need to make adjustments to old_available and young_available.
 
   if (old_available >= old_reserve) {
     // We are running a surplus, so the old region surplus can go to young
@@ -777,6 +749,11 @@ void ShenandoahGenerationalHeap::compute_old_generation_balance(size_t mutator_x
     // We know that (old_available < old_reserve) and (old_available + mutator_xfer_limit < old_reserve) because
     // above tests failed.  We need to shrink old_reserves.
 
+    // We could potentially shrink young_reserves in order to further expand old_reserves.  Let's not bother.  The
+    // important thing is that we keep a total amount of memory in reserve in preparation for the next GC cycle.  At
+    // the time we choose the next collection set, we'll have an opportunity to shift some of these young reserves
+    // into old reserves if that makes sense.
+
     // Start by taking all of mutator_xfer_limit into old_available.
     size_t old_region_deficit = mutator_region_xfer_limit;
     old_generation()->set_region_balance(0 - checked_cast<ssize_t>(old_region_deficit));
@@ -795,13 +772,11 @@ void ShenandoahGenerationalHeap::compute_old_generation_balance(size_t mutator_x
       budget_overrun -= reserve_for_promo;
       reserve_for_promo = 0;
       reserve_for_mixed = (reserve_for_mixed > budget_overrun)? reserve_for_mixed - budget_overrun: 0;
-      old_reserve = reserve_for_mixed;          // Note: reserve_for_promo is 0
+      old_reserve = reserve_for_mixed;          // Note: reserve_for_promo is 0 and reserve_for_mixed may equal 0.
     }
   }
 
   assert(old_region_deficit == 0 || old_region_surplus == 0, "Only surplus or deficit, never both");
-
-  // KELVIN SAYS THIS IS THE ASSERT THAT IS FAILING.
   assert(young_reserve + reserve_for_mixed + reserve_for_promo <= old_available + young_available,
          "Cannot reserve more memory than is available: %zu + %zu + %zu <= %zu + %zu",
          young_reserve, reserve_for_mixed, reserve_for_promo, old_available, young_available);

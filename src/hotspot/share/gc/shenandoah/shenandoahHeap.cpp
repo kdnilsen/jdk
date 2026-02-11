@@ -994,7 +994,6 @@ HeapWord* ShenandoahHeap::allocate_memory(ShenandoahAllocRequest& req) {
             "Only LAB allocations are elastic: %s, requested = %zu, actual = %zu",
             req.type_string(), requested, actual);
   }
-
   return result;
 }
 
