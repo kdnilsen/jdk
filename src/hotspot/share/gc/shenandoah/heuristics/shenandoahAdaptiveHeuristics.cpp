@@ -91,7 +91,7 @@ ShenandoahAdaptiveHeuristics::ShenandoahAdaptiveHeuristics(ShenandoahSpaceInfo* 
   _free_set(nullptr),
   _is_generational(ShenandoahHeap::heap()->mode()->is_generational()),
   _regulator_thread(nullptr),
-  _previous_allocation_timestamp(0.0),
+  _previous_acceleration_sample_timestamp(0.0),
   _gc_time_first_sample_index(0),
   _gc_time_num_samples(0),
   _gc_time_timestamps(NEW_C_HEAP_ARRAY(double, GC_TIME_SAMPLE_SIZE, mtGC)),
@@ -502,7 +502,7 @@ bool ShenandoahAdaptiveHeuristics::should_start_gc() {
 
   avg_cycle_time = _gc_cycle_time_history->davg() + (_margin_of_error_sd * _gc_cycle_time_history->dsd());
   avg_alloc_rate = _allocation_rate.upper_bound(_margin_of_error_sd);
-  if ((now - _previous_allocation_timestamp) >= ShenandoahAccelerationSamplePeriod) {
+  if ((now - _previous_acceleration_sample_timestamp) >= ShenandoahAccelerationSamplePeriod) {
     predicted_future_accelerated_gc_time =
       predict_gc_time(now + MAX2(get_planned_sleep_interval(), ShenandoahAccelerationSamplePeriod));
     double future_accelerated_planned_gc_time;
@@ -516,9 +516,9 @@ bool ShenandoahAdaptiveHeuristics::should_start_gc() {
     }
     allocated_bytes_since_last_sample = _free_set->get_bytes_allocated_since_previous_sample();
     instantaneous_rate_words_per_second =
-      (allocated_bytes_since_last_sample / HeapWordSize) / (now - _previous_allocation_timestamp);
+      (allocated_bytes_since_last_sample / HeapWordSize) / (now - _previous_acceleration_sample_timestamp);
 
-    _previous_allocation_timestamp = now;
+    _previous_acceleration_sample_timestamp = now;
     add_rate_to_acceleration_history(now, instantaneous_rate_words_per_second);
     current_rate_by_acceleration = instantaneous_rate_words_per_second;
     consumption_accelerated =
@@ -554,7 +554,7 @@ bool ShenandoahAdaptiveHeuristics::should_start_gc() {
     // change that causes increasing allocations occurs near the end ot this time segment.  When sampled with a 3 ms period,
     // acceration of allocation can be triggered at approximately time 101.88s.
     //
-    // In the default configuration, accelerated allocation rate is detected by examining a sequence of 5 allocation rate samples.
+    // In the default configuration, accelerated allocation rate is detected by examining a sequence of 8 allocation rate samples.
     //
     // Even a single allocation rate sample above the norm can be interpreted as acceleration of allocation rate.  For example, the
     // the best-fit line for the following samples has an acceleration rate of 3,553.3 MB/s/s.  This is not enough to trigger GC,
@@ -604,17 +604,17 @@ bool ShenandoahAdaptiveHeuristics::should_start_gc() {
     //     (See High School physics discussions on constant acceleration: D = v0 * t + 1/2 * a * t^2)
     //  7. if Consumption exceeds headroom, trigger now
     //
-    // Though larger sample size may improve quality of predictor, it would delay our trigger response as well.  Smaller sample
-    // sizes are more susceptible to false triggers based on random noise.  The default configuration uses a sample size of 5,
-    // spanning 15ms of execution.
+    // Though larger sample size may improve quality of predictor, it also delays trigger response.  Smaller sample sizes
+    // are more susceptible to false triggers based on random noise.  The default configuration uses a sample size of 8 and
+    // a sample period of roughly 15 ms, spanning approximately 120 ms of execution.
 
     // The test (3 * allocated > available) below is intended to prevent accelerated triggers from firing so quickly that there
     // has not been sufficient time to create garbage that can be reclaimed during the triggered GC cycle.  If we trigger before
     // garbage has been created, the concurrent GC will find no garbage.  This has been observed to result in degens which
-    // experience OOM during evac or that experiene "bad progress", both of which escalate to Full GC.  Note that garbage that
+    // experience OOM during evac or that experience "bad progress", both of which escalate to Full GC.  Note that garbage that
     // was allocated following the start of the current GC cycle cannot be reclaimed in this GC cycle.  Here is the derivation
-    // of this expression:
-
+    // of the expression:
+    //
     // Let R (runway) represent the total amount of memory that can be allocated following the start of GC(N).  The runway
     // represents memory available at the start of the current GC plus garbage reclaimed by the current GC.  At any point
     // in time following the start of GC(N), the (V) available memory plus the (A) allocated-since-start-of-GC equals R.  In
