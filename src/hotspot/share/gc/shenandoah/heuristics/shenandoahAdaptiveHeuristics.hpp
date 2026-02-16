@@ -184,15 +184,6 @@ public:
   void adjust_margin_of_error(double amount);
   void adjust_spike_threshold(double amount);
 
-#ifdef KELVIN_DEPRECATE
-  // Returns number of words that can be allocated before we need to trigger next GC.
-  inline size_t allocatable() const {
-    size_t allocated_bytes = _free_set->get_bytes_allocated_since_gc_start();
-    size_t allocated_words = allocated_bytes / HeapWordSize;
-    return (allocated_words < _trigger_threshold)? _trigger_threshold - allocated_words: 0;
-  }
-#endif
-
   // Returns number of words that can be allocated before we need to trigger next GC, given available in bytes.
   inline size_t allocatable(size_t available) const {
     return (available > _headroom_adjustment)? (available - _headroom_adjustment) / HeapWordSize: 0;
