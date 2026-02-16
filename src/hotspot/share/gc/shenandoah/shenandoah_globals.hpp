@@ -36,12 +36,12 @@
                                                                             \
   product(double, ShenandoahAccelerationSamplePeriod, 0.0145, EXPERIMENTAL, \
           "When at least this much time (measured in seconds) has passed "  \
-          "since the allocation rate was most recently sampled, capture "   \
-          "another allocation rate sample for the purpose of detecting "    \
-          "acceleration or momentary spikes in allocation rate.  A "        \
-          "smaller value allows quicker response to changes in allocation " \
-          "rates but is more vulnerable to noise and requires more "        \
-          "monitoring effort.")                                             \
+          "since the acceleration allocation rate was most recently "       \
+          "sampled, capture another allocation rate sample for the purpose "\
+          "of detecting acceleration or momentary spikes in allocation "    \
+          "rate. A smaller value allows quicker response to changes in "    \
+          "allocation rates but is more vulnerable to noise and requires "  \
+          "more monitoring effort.")                                        \
           range(0.001, 1.00)                                                \
                                                                             \
   product(uint, ShenandoahRateAccelerationSampleSize, 8, EXPERIMENTAL,      \

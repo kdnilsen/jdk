@@ -722,8 +722,9 @@ size_t ShenandoahAdaptiveHeuristics::min_free_threshold() {
   return ShenandoahHeap::heap()->soft_max_capacity() / 100 * ShenandoahMinFreeThreshold;
 }
 
-// This is called each time a new rate sample has been gathered, as governed by MINMUM_ALLOC_RATE_SAMPLE_INTERVAL.
-// There is no adjustment for standard deviation of the accelerated rate prediction.
+// This is called each time a new rate sample has been gathered, as governed by ShenandoahAccelerationSamplePeriod.
+// Unlike traditional calculation of average allocation rate, there is no adjustment for standard deviation of the
+// accelerated rate prediction.
 size_t ShenandoahAdaptiveHeuristics::accelerated_consumption(double& acceleration, double& current_rate,
                                                              double avg_alloc_rate_words_per_second,
                                                              double predicted_cycle_time) const
@@ -903,4 +904,3 @@ double ShenandoahAllocationRate::instantaneous_rate(double time, size_t allocate
   double time_delta_sec = time - last_time;
   return (time_delta_sec > 0)  ? (allocation_delta / time_delta_sec) : 0;
 }
-
