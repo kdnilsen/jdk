@@ -163,10 +163,6 @@ void ShenandoahHeuristics::start_idle_span() {
   // do nothing
 }
 
-void ShenandoahHeuristics::start_evac_span() {
-  // do nothing
-}
-
 void ShenandoahHeuristics::resume_idle_span() {
   // do nothing
 }

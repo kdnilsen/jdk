@@ -226,7 +226,6 @@ public:
   }
 
   virtual void start_idle_span();
-  virtual void start_evac_span();
   virtual void resume_idle_span();
 
   virtual void record_cycle_start();

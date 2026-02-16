@@ -125,11 +125,6 @@ public:
   // to start the next GC.
   void resume_idle_span() override;
 
-  // As we begin to do evacuation, adjust the trigger threshold to not account for headroom, as we are now free to allocate
-  // everything that remains in the mutator set up until that is exhausted.  Our hope is that we finish GC before the
-  // remaining mutator memory is fully depleted.
-  void start_evac_span() override;
-
   // Having observed a new allocation rate sample, add this to the acceleration history so that we can determine if allocation
   // rate is accelerating.
   void add_rate_to_acceleration_history(double timestamp, double rate);
@@ -231,7 +226,7 @@ protected:
   // This represents the time at which the allocation rate was most recently sampled for the purpose of detecting acceleration.
   double _previous_acceleration_sample_timestamp;
   size_t _total_allocations_at_start_of_idle;
-  size_t _trigger_threshold;
+
   // bytes of headroom at which we should trigger GC
   size_t _headroom_adjustment;
 
@@ -251,11 +246,9 @@ protected:
   double _gc_time_b;            // y-intercept
   double _gc_time_sd;           // sd on deviance from prediction
 
-  // _trigger_threshold, represented in words, is the amount of memory that we allow ourselves to allocate while concurrent
-  // GC is running.  If anticipated consumption of mutator memory during GC (e.g. average alloc rate * average GC time)
-  // exceeds _trigger_threshold, we need to start GC now.  Note that we intend NOT to allocate the headroom reserve,
-  // so this is not included in the _trigger_threshold.
-  void recalculate_trigger_threshold(size_t mutator_available);
+  // In preparation for a span during which GC will be idle, compute the headroom adjustment that will be used to
+  // detect when GC needs to trigger.
+  void compute_headroom_adjustment(size_t mutator_available);
 
   void add_gc_time(double timestamp_at_start, double duration);
   void add_degenerated_gc_time(double timestamp_at_start, double duration);
@@ -269,8 +262,6 @@ protected:
   uint _spike_acceleration_num_samples;
   double* const _spike_acceleration_rate_samples; // holds rates in words/second
   double* const _spike_acceleration_rate_timestamps;
-
-  size_t _most_recent_headroom_at_start_of_idle;
 
   // A conservative minimum threshold of free space that we'll try to maintain when possible.
   // For example, we might trigger a concurrent gc if we are likely to drop below

@@ -109,8 +109,7 @@ ShenandoahAdaptiveHeuristics::ShenandoahAdaptiveHeuristics(ShenandoahSpaceInfo* 
   _spike_acceleration_first_sample_index(0),
   _spike_acceleration_num_samples(0),
   _spike_acceleration_rate_samples(NEW_C_HEAP_ARRAY(double, _spike_acceleration_buffer_size, mtGC)),
-  _spike_acceleration_rate_timestamps(NEW_C_HEAP_ARRAY(double, _spike_acceleration_buffer_size, mtGC)),
-  _most_recent_headroom_at_start_of_idle((size_t) 0) {
+  _spike_acceleration_rate_timestamps(NEW_C_HEAP_ARRAY(double, _spike_acceleration_buffer_size, mtGC)) {
   }
 
 ShenandoahAdaptiveHeuristics::~ShenandoahAdaptiveHeuristics() {
@@ -133,10 +132,10 @@ void ShenandoahAdaptiveHeuristics::post_initialize() {
   _control_thread = ShenandoahHeap::heap()->control_thread();
   size_t global_available = (ShenandoahHeap::heap()->global_generation()->max_capacity() -
                              (ShenandoahHeap::heap()->global_generation()->used() + _free_set->reserved()));
-  recalculate_trigger_threshold(global_available);
+  compute_headroom_adjustment(global_available);
 }
 
-void ShenandoahAdaptiveHeuristics::recalculate_trigger_threshold(size_t mutator_available) {
+void ShenandoahAdaptiveHeuristics::compute_headroom_adjustment(size_t mutator_available) {
   // The trigger threshold represents mutator available - "head room".
   // We plan for GC to finish before the amount of allocated memory exceeds trigger threshold.  This is the same  as saying we
   // intend to finish GC before the amount of available memory is less than the allocation headroom.  Headroom is the planned
@@ -150,41 +149,16 @@ void ShenandoahAdaptiveHeuristics::recalculate_trigger_threshold(size_t mutator_
 
   // make headroom adjustments
   _headroom_adjustment = spike_headroom + penalties;
-  size_t adjusted_mutator_available;
-  if (mutator_available >= _headroom_adjustment) {
-    adjusted_mutator_available = mutator_available - _headroom_adjustment;
-  } else {
-    adjusted_mutator_available = 0;
-  }
-
-  assert(!_is_generational || !strcmp(_space_info->name(), "Young") || !strcmp(_space_info->name(), "Global"),
-         "Assumed young or global space, but got: %s", _space_info->name());
-  assert(_is_generational || !strcmp(_space_info->name(), ""), "Assumed global (unnamed) space, but got: %s", _space_info->name());
-  log_info(gc)("At start or resumption of idle gc span for %s, mutator available adjusted to: " PROPERFMT
-               " after adjusting for spike_headroom: " PROPERFMT " and penalties: " PROPERFMT,
-               _is_generational? _space_info->name(): "Global",
-               PROPERFMTARGS(adjusted_mutator_available), PROPERFMTARGS(spike_headroom), PROPERFMTARGS(penalties));
-
-  _most_recent_headroom_at_start_of_idle = adjusted_mutator_available;
-  // _trigger_threshold is expressed in words
-  _trigger_threshold = (bytes_allocated_at_start_of_idle_span + adjusted_mutator_available) / HeapWordSize;
 }
 
 void ShenandoahAdaptiveHeuristics::start_idle_span() {
   size_t mutator_available = _free_set->available();
-  recalculate_trigger_threshold(mutator_available);
+  compute_headroom_adjustment(mutator_available);
 }
 
 void ShenandoahAdaptiveHeuristics::resume_idle_span() {
   size_t mutator_available = _free_set->available_holding_lock();
-  recalculate_trigger_threshold(mutator_available);
-}
-
-// There is no headroom during evacuation and update refs.  This information is not used to trigger the next GC.
-// In future implementations, this information may feed into worker surge calculations.
-void ShenandoahAdaptiveHeuristics::start_evac_span() {
-  size_t mutator_available = _free_set->available_holding_lock();
-  _trigger_threshold = mutator_available;
+  compute_headroom_adjustment(mutator_available);
 }
 
 void ShenandoahAdaptiveHeuristics::adjust_penalty(intx step) {

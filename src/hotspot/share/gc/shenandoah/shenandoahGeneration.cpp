@@ -320,7 +320,6 @@ void ShenandoahGeneration::prepare_regions_and_collection_set(bool concurrent) {
       gen_heap->compute_old_generation_balance(allocation_runway, old_trashed_regions, young_trashed_regions);
     }
     _free_set->finish_rebuild(young_trashed_regions, old_trashed_regions, num_old);
-    heap->heuristics()->start_evac_span();
   }
 }
 
