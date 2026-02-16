@@ -228,7 +228,7 @@ protected:
   ShenandoahRegulatorThread* _regulator_thread;
   ShenandoahController* _control_thread;
 
-  // This represesnts the time at which the allocation rate was most recently sampled for the purpose of detecting acceleraetion.
+  // This represents the time at which the allocation rate was most recently sampled for the purpose of detecting acceleration.
   double _previous_acceleration_sample_timestamp;
   size_t _total_allocations_at_start_of_idle;
   size_t _trigger_threshold;
