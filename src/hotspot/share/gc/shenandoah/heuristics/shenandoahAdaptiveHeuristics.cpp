@@ -89,8 +89,6 @@ ShenandoahAdaptiveHeuristics::ShenandoahAdaptiveHeuristics(ShenandoahSpaceInfo* 
   _last_trigger(OTHER),
   _available(Moving_Average_Samples, ShenandoahAdaptiveDecayFactor),
   _free_set(nullptr),
-  _is_generational(ShenandoahHeap::heap()->mode()->is_generational()),
-  _regulator_thread(nullptr),
   _previous_acceleration_sample_timestamp(0.0),
   _gc_time_first_sample_index(0),
   _gc_time_num_samples(0),
@@ -128,8 +126,7 @@ void ShenandoahAdaptiveHeuristics::initialize() {
 void ShenandoahAdaptiveHeuristics::post_initialize() {
   ShenandoahHeuristics::post_initialize();
   _free_set = ShenandoahHeap::heap()->free_set();
-  assert(!_is_generational, "ShenandoahGenerationalHeuristics overrides this method");
-  _control_thread = ShenandoahHeap::heap()->control_thread();
+  assert(!ShenandoahHeap::heap()->mode()->is_generational(), "ShenandoahGenerationalHeuristics overrides this method");
   compute_headroom_adjustment();
 }
 

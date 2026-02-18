@@ -214,9 +214,6 @@ protected:
   TruncatedSeq _available;
 
   ShenandoahFreeSet* _free_set;
-  bool _is_generational;
-  ShenandoahRegulatorThread* _regulator_thread;
-  ShenandoahController* _control_thread;
 
   // This represents the time at which the allocation rate was most recently sampled for the purpose of detecting acceleration.
   double _previous_acceleration_sample_timestamp;
