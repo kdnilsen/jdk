@@ -34,19 +34,19 @@
                             range,                                          \
                             constraint)                                     \
                                                                             \
-  product(double, ShenandoahAccelerationSamplePeriod, 0.0145, EXPERIMENTAL, \
-          "When at least this much time (measured in seconds) has passed "  \
+  product(uint, ShenandoahAccelerationSamplePeriod, 15, EXPERIMENTAL,       \
+          "When at least this much time (measured in ms) has passed "       \
           "since the acceleration allocation rate was most recently "       \
           "sampled, capture another allocation rate sample for the purpose "\
           "of detecting acceleration or momentary spikes in allocation "    \
           "rate. A smaller value allows quicker response to changes in "    \
           "allocation rates but is more vulnerable to noise and requires "  \
           "more monitoring effort.")                                        \
-          range(0.001, 1.00)                                                \
+          range(1, 1000)                                                    \
                                                                             \
   product(uint, ShenandoahRateAccelerationSampleSize, 8, EXPERIMENTAL,      \
           "In selected ShenandoahControlIntervals "                         \
-          "(if ShenandoahAccelerationSamplePeriod seconds have passed "     \
+          "(if ShenandoahAccelerationSamplePeriod ms have passed "          \
           "since previous allocation rate sample), "                        \
           "we compute the allocation rate since the previous rate was "     \
           "sampled.  This many samples are analyzed to determine whether "  \
@@ -68,7 +68,7 @@
   product(uint, ShenandoahMomentaryAllocationRateSpikeSampleSize,           \
           2, EXPERIMENTAL,                                                  \
           "In selected ShenandoahControlIntervals "                         \
-          "(if ShenandoahAccelerationSamplePeriod seconds have passed "     \
+          "(if ShenandoahAccelerationSamplePeriod ms have passed "          \
           "since previous allocation rate sample), we compute "             \
           "the allocation rate since the previous rate was sampled. "       \
           "The weighted average of this "                                   \
