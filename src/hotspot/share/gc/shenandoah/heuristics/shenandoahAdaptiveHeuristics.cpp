@@ -668,11 +668,11 @@ bool ShenandoahAdaptiveHeuristics::should_start_gc() {
     size_t allocation_headroom = available;
     allocation_headroom -= MIN2(allocation_headroom, spike_headroom);
     allocation_headroom -= MIN2(allocation_headroom, penalties);
-    log_info(gc, ergo)("Free headroom: %zu%s (free) - %zu%s (spike) - %zu%s (penalties) = %zu%s",
-                       byte_size_in_proper_unit(available),           proper_unit_for_byte_size(available),
-                       byte_size_in_proper_unit(spike_headroom),      proper_unit_for_byte_size(spike_headroom),
-                       byte_size_in_proper_unit(penalties),           proper_unit_for_byte_size(penalties),
-                       byte_size_in_proper_unit(allocation_headroom), proper_unit_for_byte_size(allocation_headroom));
+    log_info(gc, ergo)("Free headroom: " PROPERFMT " (free) - " PROPERFMT "(spike) - " PROPERFMT " (penalties) = " PROPERFMT,
+                       PROPERFMTARGS(available),
+                       PROPERFMTARGS(spike_headroom),
+                       PROPERFMTARGS(penalties),
+                       PROPERFMTARGS(allocation_headroom));
     accept_trigger_with_type(RATE);
     return true;
   }
@@ -763,6 +763,9 @@ size_t ShenandoahAdaptiveHeuristics::accelerated_consumption(double& acceleratio
   double momentary_rate;
   if (_spike_acceleration_num_samples > ShenandoahMomentaryAllocationRateSpikeSampleSize) {
     // Num samples must be strictly greater than sample size, because we need one extra sample to compute rate and weights
+    // In this context, the weight of a y value (an allocation rate) is the duration for which this allocation rate was
+    // active (the time since previous y value was reported).  An allocation rate measured over a span of 300 ms (e.g. during
+    // concurrent GC) has much more "weight" than an allocation rate measured over a span of 15 s.
     double weighted_y_sum = 0;
     double total_weight = 0;
     double sum_for_average = 0.0;
@@ -816,9 +819,9 @@ size_t ShenandoahAdaptiveHeuristics::accelerated_consumption(double& acceleratio
       acceleration = m;
       current_rate = proposed_current_rate;
     }
-    // else, leave current_rate = y_max, acceleration = 0
+    // else, leave current_rate = momentary_rate, acceleration = 0
   }
-  // and here also, leave current_rate = y_max, acceleration = 0
+  // and here also, leave current_rate = momentary_rate, acceleration = 0
 
   double time_delta = get_planned_sleep_interval() + predicted_cycle_time;
   size_t words_to_be_consumed = (size_t) (current_rate * time_delta + 0.5 * acceleration * time_delta * time_delta);
