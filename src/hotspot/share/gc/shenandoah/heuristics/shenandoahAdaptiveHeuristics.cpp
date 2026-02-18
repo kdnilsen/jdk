@@ -149,10 +149,6 @@ void ShenandoahAdaptiveHeuristics::start_idle_span() {
   compute_headroom_adjustment();
 }
 
-void ShenandoahAdaptiveHeuristics::resume_idle_span() {
-  compute_headroom_adjustment();
-}
-
 void ShenandoahAdaptiveHeuristics::adjust_penalty(intx step) {
   ShenandoahHeuristics::adjust_penalty(step);
 }

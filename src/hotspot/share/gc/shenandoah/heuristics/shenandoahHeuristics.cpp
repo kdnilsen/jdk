@@ -163,10 +163,6 @@ void ShenandoahHeuristics::start_idle_span() {
   // do nothing
 }
 
-void ShenandoahHeuristics::resume_idle_span() {
-  // do nothing
-}
-
 void ShenandoahHeuristics::record_degenerated_cycle_start(bool out_of_cycle) {
   if (out_of_cycle) {
     _precursor_cycle_start = _cycle_start = os::elapsedTime();

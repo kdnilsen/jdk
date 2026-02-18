@@ -120,11 +120,6 @@ public:
   // before we need to start the next GC.
   void start_idle_span() override;
 
-  // If old-generation marking finishes during an idle span and immediate old-generation garbage is identified, we will rebuild
-  // the free set.  If this happens, resume_idle_span() recomputes the threshold of memory that can be allocated before we need
-  // to start the next GC.
-  void resume_idle_span() override;
-
   // Having observed a new allocation rate sample, add this to the acceleration history so that we can determine if allocation
   // rate is accelerating.
   void add_rate_to_acceleration_history(double timestamp, double rate);
