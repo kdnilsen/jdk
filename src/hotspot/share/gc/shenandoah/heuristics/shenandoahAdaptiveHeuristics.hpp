@@ -248,7 +248,7 @@ protected:
 
   // In preparation for a span during which GC will be idle, compute the headroom adjustment that will be used to
   // detect when GC needs to trigger.
-  void compute_headroom_adjustment(size_t mutator_available);
+  void compute_headroom_adjustment() override;
 
   void add_gc_time(double timestamp_at_start, double duration);
   void add_degenerated_gc_time(double timestamp_at_start, double duration);

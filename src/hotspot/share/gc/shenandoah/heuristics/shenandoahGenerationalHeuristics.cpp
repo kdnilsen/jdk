@@ -55,9 +55,7 @@ void ShenandoahGenerationalHeuristics::post_initialize() {
   ShenandoahHeuristics::post_initialize();
   _free_set = ShenandoahHeap::heap()->free_set();
   _regulator_thread = ShenandoahGenerationalHeap::heap()->regulator_thread();
-  size_t young_available = (ShenandoahGenerationalHeap::heap()->young_generation()->max_capacity() -
-                            (ShenandoahGenerationalHeap::heap()->young_generation()->used() + _free_set->reserved()));
-  compute_headroom_adjustment(young_available);
+  compute_headroom_adjustment();
 }
 
 inline void assert_no_in_place_promotions() {

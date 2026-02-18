@@ -765,6 +765,7 @@ void ShenandoahHeap::set_soft_max_capacity(size_t v) {
          "Should be in bounds: %zu <= %zu <= %zu",
          min_capacity(), v, max_capacity());
   AtomicAccess::store(&_soft_max_size, v);
+  heuristics()->compute_headroom_adjustment();
 }
 
 size_t ShenandoahHeap::min_capacity() const {

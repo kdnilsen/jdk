@@ -130,12 +130,10 @@ void ShenandoahAdaptiveHeuristics::post_initialize() {
   _free_set = ShenandoahHeap::heap()->free_set();
   assert(!_is_generational, "ShenandoahGenerationalHeuristics overrides this method");
   _control_thread = ShenandoahHeap::heap()->control_thread();
-  size_t global_available = (ShenandoahHeap::heap()->global_generation()->max_capacity() -
-                             (ShenandoahHeap::heap()->global_generation()->used() + _free_set->reserved()));
-  compute_headroom_adjustment(global_available);
+  compute_headroom_adjustment();
 }
 
-void ShenandoahAdaptiveHeuristics::compute_headroom_adjustment(size_t mutator_available) {
+void ShenandoahAdaptiveHeuristics::compute_headroom_adjustment() {
   // The trigger threshold represents mutator available - "head room".
   // We plan for GC to finish before the amount of allocated memory exceeds trigger threshold.  This is the same  as saying we
   // intend to finish GC before the amount of available memory is less than the allocation headroom.  Headroom is the planned
@@ -144,21 +142,15 @@ void ShenandoahAdaptiveHeuristics::compute_headroom_adjustment(size_t mutator_av
   size_t capacity = ShenandoahHeap::heap()->soft_max_capacity();
   size_t spike_headroom = capacity / 100 * ShenandoahAllocSpikeFactor;
   size_t penalties      = capacity / 100 * _gc_time_penalties;
-
-  size_t bytes_allocated_at_start_of_idle_span = _free_set->get_bytes_allocated_since_gc_start();
-
-  // make headroom adjustments
   _headroom_adjustment = spike_headroom + penalties;
 }
 
 void ShenandoahAdaptiveHeuristics::start_idle_span() {
-  size_t mutator_available = _free_set->available();
-  compute_headroom_adjustment(mutator_available);
+  compute_headroom_adjustment();
 }
 
 void ShenandoahAdaptiveHeuristics::resume_idle_span() {
-  size_t mutator_available = _free_set->available_holding_lock();
-  compute_headroom_adjustment(mutator_available);
+  compute_headroom_adjustment();
 }
 
 void ShenandoahAdaptiveHeuristics::adjust_penalty(intx step) {

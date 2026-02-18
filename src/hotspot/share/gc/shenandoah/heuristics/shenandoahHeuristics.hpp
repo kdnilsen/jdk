@@ -227,6 +227,9 @@ public:
 
   virtual void start_idle_span();
   virtual void resume_idle_span();
+  virtual void compute_headroom_adjustment() {
+    // Default implementation does nothing.
+  }
 
   virtual void record_cycle_start();
 
