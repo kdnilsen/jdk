@@ -483,8 +483,9 @@ bool ShenandoahAdaptiveHeuristics::should_start_gc() {
   // runway is divided "equally" between the current GC and the next GC, then at any potential trigger point (which cannot
   // happen any sooner than completion of the first GC), it is already the case that roughly A > R/2.
   if (3 * allocated <= available) {
-    decline_trigger();
-    return false;
+    // Even though we will not issue an adaptive trigger unless a minimum threshold of memory has been allocated,
+    // we still allow more generic triggers, such as guaranteed GC intervals, to act.
+    return ShenandoahHeuristics::should_start_gc();
   }
 
   avg_cycle_time = _gc_cycle_time_history->davg() + (_margin_of_error_sd * _gc_cycle_time_history->dsd());
