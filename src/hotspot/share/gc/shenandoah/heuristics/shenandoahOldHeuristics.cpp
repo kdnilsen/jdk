@@ -67,6 +67,7 @@ ShenandoahOldHeuristics::ShenandoahOldHeuristics(ShenandoahOldGeneration* genera
   _next_old_collection_candidate(0),
   _last_old_region(0),
   _live_bytes_in_unprocessed_candidates(0),
+  _garbage_in_unprocessed_candidates(0),
   _old_generation(generation),
   _cannot_expand_trigger(false),
   _fragmentation_trigger(false),
@@ -595,6 +596,26 @@ void ShenandoahOldHeuristics::set_unprocessed_old_collection_candidates_live_mem
 void ShenandoahOldHeuristics::decrease_unprocessed_old_collection_candidates_live_memory(size_t evacuated_live) {
   assert(evacuated_live <= _live_bytes_in_unprocessed_candidates, "Cannot evacuate more than was present");
   _live_bytes_in_unprocessed_candidates -= evacuated_live;
+}
+
+size_t ShenandoahOldHeuristics::unprocessed_old_collection_candidates_garbage() const {
+  return _garbage_in_unprocessed_candidates;
+}
+
+void ShenandoahOldHeuristics::set_unprocessed_old_collection_candidates_garbage(size_t initial_garbage) {
+  _garbage_in_unprocessed_candidates = initial_garbage;
+#ifdef KELVIN_CANDIDATE_GARBAGE
+  log_info(gc)("set_unprocessed_old_collection_candidates_garbage(%zu)", initial_garbage);
+#endif
+}
+
+void ShenandoahOldHeuristics::decrease_unprocessed_old_collection_candidates_garbage(size_t reclaimed_garbage) {
+#ifdef KELVIN_CANDIDATE_GARBAGE
+  log_info(gc)("decrease_unprocessed_old_collection_candidates_garbage(%zu) from total %zu",
+               reclaimed_garbage, _garbage_in_unprocessed_candidates);
+#endif
+  assert(reclaimed_garbage <= _garbage_in_unprocessed_candidates, "Cannot reclaim more garbage than was present");
+  _garbage_in_unprocessed_candidates -= reclaimed_garbage;
 }
 
 // Used by unit test: test_shenandoahOldHeuristic.cpp

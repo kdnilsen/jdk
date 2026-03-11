@@ -250,6 +250,7 @@ void ShenandoahGenerationalHeuristics::filter_regions(ShenandoahCollectionSet* c
   size_t preselected_candidates = 0;
 
   size_t total_garbage = 0;
+  size_t live_words_in_young = 0;
 
   size_t immediate_garbage = 0;
   size_t immediate_regions = 0;
@@ -259,8 +260,12 @@ void ShenandoahGenerationalHeuristics::filter_regions(ShenandoahCollectionSet* c
 
   // This counts number of humongous regions that we intend to promote in this cycle.
   size_t humongous_regions_promoted = 0;
+  // This counts number of words that we intend to promote in this cycle.
+  size_t humongous_live_words_promoted = 0;
   // This counts number of regular regions that will be promoted in place.
   size_t regular_regions_promoted_in_place = 0;
+  // This counts bytes of live memory within regular regions to be promoted in place.
+  size_t regular_regions_promoted_live = 0;
   // This counts bytes of memory used by regular regions to be promoted in place.
   size_t regular_regions_promoted_usage = 0;
   // This counts bytes of memory free in regular regions to be promoted in place.
@@ -275,6 +280,9 @@ void ShenandoahGenerationalHeuristics::filter_regions(ShenandoahCollectionSet* c
     }
     size_t garbage = region->garbage();
     total_garbage += garbage;
+    if (region->is_young()) {
+      live_words_in_young += region->get_live_data_words();
+    }
     if (region->is_empty()) {
       free_regions++;
       free += region_size_bytes;
@@ -303,6 +311,7 @@ void ShenandoahGenerationalHeuristics::filter_regions(ShenandoahCollectionSet* c
           if (region->get_top_before_promote() != nullptr) {
             // Region was included for promotion-in-place
             regular_regions_promoted_in_place++;
+	    regular_regions_promoted_live += region->get_live_data_words();
             regular_regions_promoted_usage += region->used_before_promote();
             regular_regions_promoted_free += region->free();
             regular_regions_promoted_garbage += region->garbage();
@@ -334,8 +343,10 @@ void ShenandoahGenerationalHeuristics::filter_regions(ShenandoahCollectionSet* c
       } else {
         if (region->is_young() && heap->is_tenurable(region)) {
           oop obj = cast_to_oop(region->bottom());
-          size_t humongous_regions = ShenandoahHeapRegion::required_regions(obj->size() * HeapWordSize);
+	  size_t humongous_object_size = obj->size(); 
+          size_t humongous_regions = ShenandoahHeapRegion::required_regions(humongous_object_size * HeapWordSize);
           humongous_regions_promoted += humongous_regions;
+	  humongous_live_words_promoted += humongous_object_size;
         }
       }
     } else if (region->is_trash()) {
@@ -345,7 +356,13 @@ void ShenandoahGenerationalHeuristics::filter_regions(ShenandoahCollectionSet* c
     }
   }
   heap->old_generation()->set_expected_humongous_region_promotions(humongous_regions_promoted);
+  heap->old_generation()->set_expected_promotable_humongous_region_live_data(humongous_live_words_promoted);
   heap->old_generation()->set_expected_regular_region_promotions(regular_regions_promoted_in_place);
+  heap->old_generation()->set_expected_promotable_regular_region_live_data(regular_regions_promoted_live);
+
+  ShenandoahYoungHeuristics* young_heuristics = heap->young_generation()->heuristics();
+  young_heuristics->set_young_live_words_after_most_recent_mark(live_words_in_young);
+
   log_info(gc, ergo)("Planning to promote in place %zu humongous regions and %zu"
                      " regular regions, spanning a total of %zu used bytes",
                      humongous_regions_promoted, regular_regions_promoted_in_place,

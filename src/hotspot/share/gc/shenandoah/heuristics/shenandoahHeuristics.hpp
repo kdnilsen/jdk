@@ -59,6 +59,14 @@
 class ShenandoahCollectionSet;
 class ShenandoahHeapRegion;
 
+typedef enum {
+  _mark,
+  _evac,
+  _update,
+  _final_roots,
+  _num_phases
+} ShenandoahMajorGCPhase;
+
 /*
  * Shenandoah heuristics are primarily responsible for deciding when to start
  * a collection cycle and choosing which regions will be evacuated during the
@@ -96,6 +104,13 @@ protected:
                                           //  in delaying the trigger vs. degeneration for other reasons (such as the
                                           //  most recent GC triggered "immediately" after previous GC finished, but the
                                           //  free headroom has already been depleted).
+
+  // Remember how much data was live after most recent mark
+  size_t _live_words_after_most_recent_mark;
+
+  // Remember how much data was evacuated in most recent evacuation
+  size_t _words_most_recently_evacuated;
+
   class RegionData {
     private:
     ShenandoahHeapRegion* _region;
@@ -268,6 +283,117 @@ public:
   // This indicates whether or not the current cycle should unload classes.
   // It does NOT indicate that a cycle should be started.
   virtual bool should_unload_classes();
+
+  virtual void record_phase_duration(ShenandoahMajorGCPhase p, double x, double duration) {
+    // Only adaptive heuristics will care to record phase durations
+  }
+
+  inline void set_live_words_after_most_recent_mark(size_t live_words) {
+    _live_words_after_most_recent_mark = live_words;
+  }
+
+  inline size_t get_live_words_after_most_recent_mark() {
+    return _live_words_after_most_recent_mark;
+  }
+
+  inline void set_words_most_recently_evacuated(size_t evacuated_words) {
+    _words_most_recently_evacuated = evacuated_words;
+  }
+
+  inline size_t get_words_most_recently_evacuated() {
+    return _words_most_recently_evacuated;
+  }
+
+  virtual void record_mark_end(double now, size_t marked_words) {
+    // Do nothing.
+    //  Subclass ShenandoahAdaptiveHeuristics overrides for satb mode.
+    //  Subclass ShenandoahYoungHeuristics overrides for generational mode.
+  }
+
+  virtual void record_evac_end(double now, size_t evacuated_words, size_t pip_words) {
+    // Do nothing.
+    //  Subclass ShenandoahAdaptiveHeuristics overrides for satb mode.
+    //  Subclass ShenandoahYoungHeuristics overrides for generational mode.
+  }
+
+  virtual void record_update_end(double now, size_t updated_words) {
+    // Do nothing.
+    //  Subclass ShenandoahAdaptiveHeuristics overrides for satb mode.
+    //  Subclass ShenandoahYoungHeuristics overrides for generational mode.
+  }
+
+  virtual void record_final_roots_end(double now, size_t pip_words) {
+    // Do nothing.
+    //  Subclass ShenandoahAdaptiveHeuristics overrides for satb mode.
+    //  Subclass ShenandoahYoungHeuristics overrides for generational mode.
+  }
+
+  virtual double predict_mark_time(size_t anticipated_marked_words) {
+    //  Subclass ShenandoahAdaptiveHeuristics overrides for satb mode.
+    //  Subclass ShenandoahYoungHeuristics overrides for generational mode.
+    return 0.0;
+  }
+
+  // For satb mode, anticipate_pip_words is zero
+  virtual double predict_evac_time(size_t anticipated_evac_words, size_t anticipated_pip_words) {
+    //  Subclass ShenandoahAdaptiveHeuristics overrides for satb mode.
+    //  Subclass ShenandoahYoungHeuristics overrides for generational mode.
+    return 0.0;
+  }
+
+  virtual double predict_update_time(size_t anticipated_update_words) {
+    //  Subclass ShenandoahAdaptiveHeuristics overrides for satb mode.
+    //  Subclass ShenandoahYoungHeuristics overrides for generational mode.
+    return 0.0;
+  }
+
+  // In non-generational mode, supply pip_words as zero
+  virtual double predict_final_roots_time(size_t pip_words) {
+    //  Subclass ShenandoahAdaptiveHeuristics overrides for satb mode.
+    //  Subclass ShenandoahYoungHeuristics overrides for generational mode.
+    return 0.0;
+  }
+
+  // Predict gc time using conservative approximations of anticipated evac words and anticipated mark words.
+  virtual double predict_gc_time() {
+    //  Subclass ShenandoahAdaptiveHeuristics overrides for satb mode.
+    //  Subclass ShenandoahYoungHeuristics overrides for generational mode.
+    return 0.0;
+  }
+
+  // Predict gc time using non-conservative approximations of anticipated evac words and anticipated mark words.
+  // Non-conservative approximations do not add the standard deviation for recent measurements of these quantities.
+  virtual double predict_gc_time_nonconservative() {
+    //  Subclass ShenandoahAdaptiveHeuristics overrides for satb mode.
+    //  Subclass ShenandoahYoungHeuristics overrides for generational mode.
+    return 0.0;
+  }
+
+  virtual double predict_mark_time_nonconservative(size_t anticipated_marked_words) {
+    //  Subclass ShenandoahAdaptiveHeuristics overrides for satb mode.
+    //  Subclass ShenandoahYoungHeuristics overrides for generational mode.
+    return 0.0;
+  }
+
+  // For satb mode, anticipated_pip_words is zero.
+  virtual double predict_evac_time_nonconservative(size_t anticipated_evac_words, size_t anticipated_pip_words) {
+    //  Subclass ShenandoahAdaptiveHeuristics overrides for satb mode.
+    //  Subclass ShenandoahYoungHeuristics overrides for generational mode.
+    return 0.0;
+  }
+
+  virtual double predict_update_time_nonconservative(size_t anticipated_update_words) {
+    //  Subclass ShenandoahAdaptiveHeuristics overrides for satb mode.
+    //  Subclass ShenandoahYoungHeuristics overrides for generational mode.
+    return 0.0;
+  }
+
+  virtual double predict_final_roots_time_nonconservative(size_t pip_words) {
+    //  Subclass ShenandoahAdaptiveHeuristics overrides for satb mode.
+    //  Subclass ShenandoahYoungHeuristics overrides for generational mode.
+    return 0.0;
+  }
+
 
   virtual const char* name() = 0;
   virtual bool is_diagnostic() = 0;

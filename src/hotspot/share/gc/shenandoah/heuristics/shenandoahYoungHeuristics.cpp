@@ -26,6 +26,7 @@
 #include "gc/shenandoah/heuristics/shenandoahOldHeuristics.hpp"
 #include "gc/shenandoah/heuristics/shenandoahYoungHeuristics.hpp"
 #include "gc/shenandoah/shenandoahCollectorPolicy.hpp"
+#include "gc/shenandoah/shenandoahFreeSet.hpp"
 #include "gc/shenandoah/shenandoahGenerationalHeap.inline.hpp"
 #include "gc/shenandoah/shenandoahHeapRegion.inline.hpp"
 #include "gc/shenandoah/shenandoahOldGeneration.hpp"
@@ -33,9 +34,22 @@
 #include "utilities/quickSort.hpp"
 
 ShenandoahYoungHeuristics::ShenandoahYoungHeuristics(ShenandoahYoungGeneration* generation)
-    : ShenandoahGenerationalHeuristics(generation) {
+    : ShenandoahGenerationalHeuristics(generation),
+      _young_live_words_not_in_most_recent_cset(0),
+      _old_live_words_not_in_most_recent_cset(0),
+      _remset_words_in_most_recent_mark_scan(0),
+      _young_live_words_after_most_recent_mark(0),
+      _young_words_most_recently_evacuated(0),
+      _old_words_most_recently_evacuated(0),
+      _words_most_recently_promoted(0),
+      _regions_most_recently_promoted_in_place(0),
+      _live_words_most_recently_promoted_in_place(0),
+      _anticipated_pip_words(0) {
+#undef KELVIN_YOUNG
+#ifdef KELVIN_YOUNG
+  log_info(gc)("Instantiating ShenYoungHeuristics, my name is: %s", name());
+#endif
 }
-
 
 void ShenandoahYoungHeuristics::choose_collection_set_from_regiondata(ShenandoahCollectionSet* cset,
                                                                       RegionData* data, size_t size,
@@ -65,6 +79,38 @@ void ShenandoahYoungHeuristics::choose_collection_set_from_regiondata(Shenandoah
   need_to_finalize_mixed |= heap->old_generation()->heuristics()->top_off_collection_set(_add_regions_to_old);
   if (need_to_finalize_mixed) {
     heap->old_generation()->heuristics()->finalize_mixed_evacs();
+  }
+
+  size_t young_words_evacuated = cset->get_young_bytes_reserved_for_evacuation() / HeapWordSize;
+  size_t old_words_evacuated = cset->get_old_bytes_reserved_for_evacuation() / HeapWordSize;
+  set_young_words_most_recently_evacuated(young_words_evacuated);
+  set_old_words_most_recently_evacuated(old_words_evacuated);
+
+  // This memory will be updated in young
+  size_t young_live_at_mark = get_young_live_words_after_most_recent_mark();
+  size_t young_live_not_in_cset = young_live_at_mark - young_words_evacuated;
+  set_young_live_words_not_in_most_recent_cset(young_live_not_in_cset);
+
+  ShenandoahOldGeneration* old_gen = ShenandoahGenerationalHeap::heap()->old_generation();
+  if (cset->has_old_regions()) {
+    // This is a mixed collection.  We will need to update all of the old live that is not in the cset.
+    // Treat all old-gen memory that was not placed into the mixed-candidates as live. Some of this will eventually
+    // be coalesced and filled, but it is all going to be "updated". Consider any promotions following most recent
+    // old mark to be "live" (now known to be dead, so must be updated). Note that there have not been any promotions
+    // yet during this cycle, as we are just beginning to evacuate.
+    size_t old_gen_used = old_gen->used() / HeapWordSize;
+    size_t mixed_candidates_known_garbage = old_gen->unprocessed_collection_candidates_garbage() / HeapWordSize;
+    size_t old_live_in_cset = cset->get_old_bytes_reserved_for_evacuation();
+    size_t old_garbage_in_cset = cset->get_old_garbage();
+    size_t old_live_not_in_cset = old_gen_used - (old_garbage_in_cset + old_live_in_cset + mixed_candidates_known_garbage);
+    set_old_live_words_not_in_most_recent_cset(old_live_not_in_cset);
+  }
+
+  if (old_gen->has_in_place_promotions()) {
+    size_t pip_words = old_gen->get_expected_in_place_promotable_live_words();
+    set_live_words_most_recently_promoted_in_place(pip_words);
+  } else {
+    set_live_words_most_recently_promoted_in_place(0);
   }
 }
 
@@ -141,6 +187,7 @@ bool ShenandoahYoungHeuristics::should_start_gc() {
     return true;
   }
 
+#ifdef KELVIN_ORIGINAL_EXPEDITE_PROMO
   // Get through promotions and mixed evacuations as quickly as possible.  These cycles sometimes require significantly
   // more time than traditional young-generation cycles so start them up as soon as possible.  This is a "mitigation"
   // for the reality that old-gen and young-gen activities are not truly "concurrent".  If there is old-gen work to
@@ -155,7 +202,9 @@ bool ShenandoahYoungHeuristics::should_start_gc() {
     accept_trigger();
     return true;
   }
+#endif
 
+#ifdef KELVIN_ORIGINAL_EXPEDITE_MIXED
   size_t mixed_candidates = old_heuristics->unprocessed_old_collection_candidates();
   if (mixed_candidates > ShenandoahExpediteMixedThreshold && !heap->is_concurrent_weak_root_in_progress()) {
     // We need to run young GC in order to open up some free heap regions so we can finish mixed evacuations.
@@ -166,6 +215,7 @@ bool ShenandoahYoungHeuristics::should_start_gc() {
     accept_trigger();
     return true;
   }
+#endif
 
   // Don't decline_trigger() here  That was done in ShenandoahAdaptiveHeuristics::should_start_gc()
   return false;
@@ -234,4 +284,59 @@ size_t ShenandoahYoungHeuristics::bytes_of_allocation_runway_before_gc_trigger(s
   size_t threshold = min_free_threshold();
   size_t evac_min_threshold = (anticipated_available > threshold)? anticipated_available - threshold: 0;
   return MIN3(evac_slack_spiking, evac_slack_avg, evac_min_threshold);
+}
+
+
+double ShenandoahYoungHeuristics::predict_gc_time() {
+  size_t mark_words = get_anticipated_mark_words();
+  if (mark_words == 0) {
+    // Use other heuristics to trigger.
+    return 0.0;
+  }
+  double mark_time = predict_mark_time(mark_words);
+  double evac_time = predict_evac_time(get_anticipated_evac_words(), get_anticipated_pip_words());
+  double update_time = predict_update_time(get_anticipated_update_words());
+  double result = mark_time + evac_time + update_time;
+#define KELVIN_PREDICT
+#ifdef KELVIN_PREDICT
+  log_info(gc)("YH::predict_gc: %.3f from mark(%zu): %.3f, evac(%zu, %zu): %.3f, update(%zu): %.3f returns %.3f",
+	       result, get_anticipated_mark_words(), mark_time, get_anticipated_evac_words(), get_anticipated_pip_words(),
+	       evac_time, get_anticipated_update_words(), update_time, result);
+#endif
+  return result;
+}
+
+double ShenandoahYoungHeuristics::predict_gc_time_nonconservative() {
+  size_t mark_words = get_anticipated_mark_words();
+  if (mark_words == 0) {
+    // Use other heuristics to trigger.
+    return 0.0;
+  }
+  double mark_time = predict_mark_time_nonconservative(mark_words);
+  double evac_time = predict_evac_time_nonconservative(get_anticipated_evac_words(), get_anticipated_pip_words());
+  double update_time = predict_update_time_nonconservative(get_anticipated_update_words());
+  double result = mark_time + evac_time + update_time;
+#ifdef KELVIN_PREDICT
+  log_info(gc)("YH::predict_gc: %.3f from mark(%zu): %.3f, evac(%zu, %zu): %.3f, update(%zu): %.3f returns %.3f",
+	       result, get_anticipated_mark_words(), mark_time, get_anticipated_evac_words(), get_anticipated_pip_words(),
+	       evac_time, get_anticipated_update_words(), update_time, result);
+#endif
+  return result;
+}
+
+double ShenandoahYoungHeuristics::predict_evac_time(size_t anticipated_evac_words, size_t anticipated_pip_words) {
+  return _phase_stats[ShenandoahMajorGCPhase::_evac].predict_at((double) (5 * anticipated_evac_words + anticipated_pip_words));
+}
+
+double ShenandoahYoungHeuristics::predict_final_roots_time(size_t anticipated_pip_words) {
+  return _phase_stats[ShenandoahMajorGCPhase::_final_roots].predict_at((double) anticipated_pip_words);
+}
+
+double ShenandoahYoungHeuristics::predict_evac_time_nonconservative(size_t anticipated_evac_words, size_t anticipated_pip_words) {
+  return _phase_stats[ShenandoahMajorGCPhase::_evac].predict_at_without_stdev((double) (5 * anticipated_evac_words
+                                                                                        + anticipated_pip_words));
+}
+
+double ShenandoahYoungHeuristics::predict_final_roots_time_nonconservative(size_t anticipated_pip_words) {
+  return _phase_stats[ShenandoahMajorGCPhase::_final_roots].predict_at_without_stdev((double) anticipated_pip_words);
 }

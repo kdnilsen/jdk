@@ -2549,6 +2549,10 @@ void ShenandoahHeap::rebuild_free_set_within_phase() {
          old_region_count, first_old_region, last_old_region);
 
   if (mode()->is_generational()) {
+    ShenandoahGenerationalHeap* gen_heap = ShenandoahGenerationalHeap::heap();
+    ShenandoahYoungGeneration* young_gen = gen_heap->young_generation();
+    ShenandoahYoungHeuristics* young_heuristics = young_gen->heuristics();
+    young_heuristics->update_after_completed_gc();
 #ifdef ASSERT
     if (ShenandoahVerify) {
       verifier()->verify_before_rebuilding_free_set();
@@ -2557,7 +2561,6 @@ void ShenandoahHeap::rebuild_free_set_within_phase() {
 
     // The computation of bytes_of_allocation_runway_before_gc_trigger is quite conservative so consider all of this
     // available for transfer to old. Note that transfer of humongous regions does not impact available.
-    ShenandoahGenerationalHeap* gen_heap = ShenandoahGenerationalHeap::heap();
     size_t allocation_runway =
       gen_heap->young_generation()->heuristics()->bytes_of_allocation_runway_before_gc_trigger(young_trashed_regions);
     gen_heap->compute_old_generation_balance(allocation_runway, old_trashed_regions, young_trashed_regions);
