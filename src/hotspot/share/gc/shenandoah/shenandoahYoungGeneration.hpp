@@ -82,6 +82,7 @@ public:
   size_t get_affiliated_region_count() const override;
   size_t max_capacity() const override;
 
+  size_t available_with_reserve() const;
   size_t available() const override;
   size_t soft_mutator_available() const override;
 
