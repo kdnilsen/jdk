@@ -332,11 +332,86 @@ double ShenandoahYoungHeuristics::predict_final_roots_time(size_t anticipated_pi
   return _phase_stats[ShenandoahMajorGCPhase::_final_roots].predict_at((double) anticipated_pip_words);
 }
 
+double ShenandoahYoungHeuristics::predict_final_roots_time_nonconservative(size_t anticipated_pip_words) {
+  return _phase_stats[ShenandoahMajorGCPhase::_final_roots].predict_at_without_stdev((double) anticipated_pip_words);
+}
+
 double ShenandoahYoungHeuristics::predict_evac_time_nonconservative(size_t anticipated_evac_words, size_t anticipated_pip_words) {
   return _phase_stats[ShenandoahMajorGCPhase::_evac].predict_at_without_stdev((double) (5 * anticipated_evac_words
                                                                                         + anticipated_pip_words));
 }
 
-double ShenandoahYoungHeuristics::predict_final_roots_time_nonconservative(size_t anticipated_pip_words) {
-  return _phase_stats[ShenandoahMajorGCPhase::_final_roots].predict_at_without_stdev((double) anticipated_pip_words);
+void ShenandoahYoungHeuristics:: update_anticipated_after_completed_gc(size_t old_cset_regions, size_t young_cset_regions,
+                                                                       ShenandoahOldGeneration* old_gen,
+                                                                       ShenandoahYoungGeneration* young_gen,
+                                                                       size_t promo_potential_words, size_t pip_potential_words,
+                                                                       size_t mixed_candidate_live_words,
+                                                                       size_t mixed_candidate_garbage_words)
+{
+  if ((mixed_candidate_live_words + promo_potential_words == 0)) {
+    // No need for any reserve in old.  Setting anticipated_mark_words to zero denotes that we use pre-existing linear
+    // predictor for gc-time estimates.
+    set_anticipated_mark_words(0);
+    return;
+  } else {
+    // Assume the memory is available to perform "maximal" GC cycles.  As such, we'll be planning "large" efforts.
+    // If memory supply is constrained, we'll want to trigger early so we can catch up. Triggering early is reinforced
+    // by overestimating how long the GC cycle will take.
+    size_t proposed_young_reserve_words = (young_gen->max_capacity() * ShenandoahEvacReserve) / (100 * HeapWordSize);
+
+    // Note that proposed_old_reserve = (size_t) ((proposed_total_reserve * ShenandoahOldEvacPercent) / 100);
+    //           proposed_total_reserve = 100 * proposed_old_reserve / ShenandoahOldEvacPercent
+    //           proposed_total_reserve = proposed_old_reserve + proposed_young_reserve
+    //           proposed_old_reserve + proposed_young_reserve = 100 * proposed_old_reserve / ShenandoahOldEvacPercent
+    //           proposed_old_reserve * (1 - 100 / ShenandoahOldEvacPercent) = - proposed_young_reserve;
+    //           proposed_old_reserve = ((100 / ShenandoahOldEvacPercent) - 1) * proposed_young_reserve
+    //           proposed_old_reserve = proposed_young_reserve / ((100 - ShenandoahOldEvacPercent) / ShenandoahOldEvacPercent)
+    //           proposed_old_reserve = proposed_young_reserve * ShenandoahOldEvacPercent / (100 - ShenandoahOldEvacPercent);
+    size_t proposed_old_reserve_words = proposed_young_reserve_words * ShenandoahOldEvacPercent / (100 - ShenandoahOldEvacPercent);
+    size_t proposed_total_reserve_words = proposed_old_reserve_words + proposed_young_reserve_words;
+
+    // Anticipate that we will share collector reserves between old and young.  Usually, this allows us to evacuate more
+    // old than was "proposed".
+    size_t anticipated_young_evac_words = get_young_words_most_recently_evacuated();
+    size_t anticipated_young_reserve_words = (size_t) (anticipated_young_evac_words * ShenandoahEvacWaste);
+    size_t anticipated_old_reserve_words = proposed_total_reserve_words - anticipated_young_reserve_words;
+    size_t anticipated_old_evac_words = (size_t) (anticipated_old_reserve_words / ShenandoahOldEvacWaste);
+
+    // Remember the total potential mixed candidate live.  We use this to estimate update burden.
+    size_t mixed_candidate_live_potential = mixed_candidate_live_words;
+    size_t old_evac_potential_words = promo_potential_words + mixed_candidate_live_words;
+    if (anticipated_old_evac_words < old_evac_potential_words) {
+      size_t old_evac_overflow_words = old_evac_potential_words - anticipated_old_evac_words;
+      old_evac_potential_words = anticipated_old_evac_words;
+      if (old_evac_overflow_words < promo_potential_words) {
+        promo_potential_words -= old_evac_overflow_words;
+        // dead_code: old_evac_overflow_words = 0;
+      } else {
+        old_evac_overflow_words -= promo_potential_words;
+        promo_potential_words = 0;
+        if (old_evac_overflow_words < mixed_candidate_live_words) {
+          mixed_candidate_live_words -= old_evac_overflow_words;
+          // dead code: old_evac_overflow_words = 0;
+        } else {
+          // dead_code: old_evac_overflow_words -= mixed_candidate_live_words;
+          mixed_candidate_live_words = 0;
+        }
+      }
+    }
+    anticipated_old_evac_words = promo_potential_words + mixed_candidate_live_words;
+    size_t anticipated_young_update = get_young_live_words_not_in_most_recent_cset();
+    size_t anticipated_old_update;
+    if (mixed_candidate_live_words > 0) {
+      anticipated_old_update = old_gen->used() / HeapWordSize - mixed_candidate_live_words;
+    } else {
+      anticipated_old_update = get_remset_words_in_most_recent_mark_scan();
+    }
+
+    // We'll assume all promotion is by evacuation.  If we find out following mark that some of the promotion will be
+    // in place, we will adjust anticipation there.
+    set_anticipated_pip_words(0);
+    set_anticipated_mark_words(get_young_live_words_after_most_recent_mark());
+    set_anticipated_evac_words(anticipated_young_evac_words + anticipated_old_evac_words);
+    set_anticipated_update_words(anticipated_old_update + anticipated_young_update);
+  }
 }

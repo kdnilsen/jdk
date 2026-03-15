@@ -195,9 +195,11 @@ public:
     return _anticipated_pip_words;
   }
 
-  inline void update_after_completed_gc() {
-    set_anticipated_mark_words(get_young_live_words_after_most_recent_mark());
-  }
+  // We may eventually replace this function with adjust_old_evac_ratio
+  void update_anticipated_after_completed_gc(size_t old_cset_regions, size_t young_cset_regions,
+                                             ShenandoahOldGeneration* old_gen, ShenandoahYoungGeneration* young_gen,
+                                             size_t promo_potential_words, size_t pip_potential_words,
+                                             size_t mixed_candidate_live_words, size_t mixed_candidate_garbage_words);
 
 private:
   void choose_young_collection_set(ShenandoahCollectionSet* cset,

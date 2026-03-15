@@ -2550,9 +2550,17 @@ void ShenandoahHeap::rebuild_free_set_within_phase() {
 
   if (mode()->is_generational()) {
     ShenandoahGenerationalHeap* gen_heap = ShenandoahGenerationalHeap::heap();
+    ShenandoahOldGeneration* old_gen = gen_heap->old_generation();
+    ShenandoahOldHeuristics* old_heuristics = old_gen->heuristics();
     ShenandoahYoungGeneration* young_gen = gen_heap->young_generation();
     ShenandoahYoungHeuristics* young_heuristics = young_gen->heuristics();
-    young_heuristics->update_after_completed_gc();
+    size_t promo_potential_words = old_gen->get_promotion_potential() / HeapWordSize;
+    size_t pip_potential_words = old_gen->get_pip_potential() / HeapWordSize;
+    size_t mixed_candidate_live_words = old_heuristics->unprocessed_old_collection_candidates_live_memory() / HeapWordSize;
+    size_t mixed_candidate_garbage_words = old_heuristics->unprocessed_old_collection_candidates_garbage() / HeapWordSize;
+    young_heuristics->update_anticipated_after_completed_gc(old_trashed_regions, young_trashed_regions, old_gen, young_gen,
+                                                            promo_potential_words, pip_potential_words, mixed_candidate_live_words,
+                                                            mixed_candidate_garbage_words);
 #ifdef ASSERT
     if (ShenandoahVerify) {
       verifier()->verify_before_rebuilding_free_set();
