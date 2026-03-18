@@ -131,8 +131,8 @@ size_t ShenandoahYoungGeneration::free_unaffiliated_regions() const {
   return _free_set->young_unaffiliated_regions();
 }
 
-// Unlike available(), this does not limit available to memory within the mutator partition.
 size_t ShenandoahYoungGeneration::available_with_reserve() const {
+  shenandoah_assert_heaplocked();
   ShenandoahFreeSet* free_set = ShenandoahHeap::heap()->free_set();
   size_t mutator_available = free_set->available_locked();
   size_t collector_available = free_set->collector_available_locked();

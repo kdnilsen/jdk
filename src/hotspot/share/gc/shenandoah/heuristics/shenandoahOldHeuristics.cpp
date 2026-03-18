@@ -375,11 +375,6 @@ bool ShenandoahOldHeuristics::top_off_collection_set(size_t &add_regions_to_old)
 
     assert(consumed_from_young_cset <= max_young_cset, "sanity");
     assert(max_young_cset <= young_unaffiliated_regions * region_size_bytes, "sanity");
-#define KELVIN_DEBUG
-#ifdef KELVIN_DEBUG
-    log_info(gc)("planned_young_evac: %zu, consumed_from_young_cset: %zu, max_young_cset: %zu",
-                 planned_young_evac, consumed_from_young_cset, max_young_cset);
-#endif
     size_t regions_for_old_expansion;
     if (consumed_from_young_cset < max_young_cset) {
       size_t excess_young_reserves = max_young_cset - consumed_from_young_cset;
@@ -388,28 +383,16 @@ bool ShenandoahOldHeuristics::top_off_collection_set(size_t &add_regions_to_old)
       size_t consumed_unaffiliated_regions = (consumed_from_young_cset + region_size_bytes - 1) / region_size_bytes;
       size_t available_unaffiliated_regions = ((young_unaffiliated_regions > consumed_unaffiliated_regions)?
                                                young_unaffiliated_regions - consumed_unaffiliated_regions: 0);
-#ifdef KELVIN_DEBUG
-      // this is at start of evacuation.  we haven't yet reclaimed cset.  maybe i should add in immediate regions?
-      log_info(gc)("consumed_unaffiliated_regions: %zu, young_unaffiliated_regions: %zu, available_unaffiliated: %zu, gross excess_regions: %zu",
-                   consumed_unaffiliated_regions, young_unaffiliated_regions, available_unaffiliated_regions,
-                   excess_young_reserves / region_size_bytes);
-#endif
       regions_for_old_expansion = MIN2(available_unaffiliated_regions, excess_young_reserves / region_size_bytes);
     } else {
       regions_for_old_expansion = 0;
     }
-#ifdef KELVIN_DEBUG
-    log_info(gc)("regions_for_old_expansion set to %zu", regions_for_old_expansion);
-#endif
     if (regions_for_old_expansion > 0) {
       log_info(gc)("Augmenting old-gen evacuation budget from unexpended young-generation reserve by %zu regions",
                    regions_for_old_expansion);
       add_regions_to_old = regions_for_old_expansion;
       size_t budget_supplement = region_size_bytes * regions_for_old_expansion;
       size_t supplement_without_waste = (size_t) (((double) budget_supplement) / ShenandoahOldEvacWaste);
-#ifdef KELVIN_DEBUG
-      log_info(gc)("budget_supplement: %zu, supplement_without_waste: %zu", budget_supplement, supplement_without_waste);
-#endif
       _old_evacuation_budget += supplement_without_waste;
       _unspent_unfragmented_old_budget += supplement_without_waste;
       _old_generation->augment_evacuation_reserve(budget_supplement);
@@ -417,17 +400,8 @@ bool ShenandoahOldHeuristics::top_off_collection_set(size_t &add_regions_to_old)
       assert(young_generation->get_evacuation_reserve() >= _mixed_evac_cset->get_live_bytes_in_untenurable_regions() * ShenandoahEvacWaste,
              "adjusted evac reserve (%zu) must be large enough for planned evacuation (%zu)",
              young_generation->get_evacuation_reserve(), _mixed_evac_cset->get_live_bytes_in_untenurable_regions());
-#ifdef KELVIN_DEBUG
-      log_info(gc)("Adjusted _old_evacuation_budget: %zu, _unspent_unfragmented_old_budget: %zu,"
-                   " old_evac_reserve: %zu, young_evac_reserve: %zu",
-                   _old_evacuation_budget, _unspent_unfragmented_old_budget, _old_generation->get_evacuation_reserve(),
-                   young_generation->get_evacuation_reserve());
-#endif
       return add_old_regions_to_cset();
     } else {
-#ifdef KELVIN_DEBUG
-      log_info(gc)("Making no adjustments to evacuation budgets");
-#endif
       add_regions_to_old = 0;
       return false;
     }
