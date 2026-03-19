@@ -187,12 +187,12 @@ public:
 
 
   void choose_collection_set_from_regiondata(ShenandoahCollectionSet* cset,
-                                                       RegionData* data, size_t size,
-                                                       size_t actual_free) override;
+                                             RegionData* data, size_t size,
+                                             size_t actual_free) override;
 
   void record_cycle_start() override;
-  void record_success_concurrent() override;
-  void record_degenerated() override;
+  void record_degenerated(bool is_abbreviated, bool is_mixed) override;
+  void record_degenerated(bool is_generational_global, bool is_abbreviated, bool is_mixed);
   void record_success_full() override;
 
   bool should_start_gc() override;
@@ -253,6 +253,9 @@ protected:
   void adjust_spike_threshold(double amount);
 #endif
 
+  void record_success_concurrent(bool is_abbreviated, bool is_mixed) override;
+  void record_success_concurrent(bool is_generational_global, bool is_abbreviated, bool is_mixed);
+
   // Returns number of words that can be allocated before we need to trigger next GC, given available in bytes.
   inline size_t allocatable(size_t available) const {
     return (available > _headroom_adjustment)? (available - _headroom_adjustment) / HeapWordSize: 0;
@@ -311,13 +314,7 @@ protected:
   double predict_update_time(size_t anticipated_update_words) override;
   double predict_final_roots_time(size_t pip_words) override;
 
-  double predict_mark_time_nonconservative(size_t anticipated_marked_words) override;
-  double predict_evac_time_nonconservative(size_t anticipated_evac_words, size_t anticipated_pip_words) override;
-  double predict_update_time_nonconservative(size_t anticipated_update_words) override;
-  double predict_final_roots_time_nonconservative(size_t pip_words) override;
-
-  double predict_gc_time() override;
-  double predict_gc_time_nonconservative() override;
+  double predict_gc_time(size_t mark_words) override;
 
   inline size_t get_anticipated_mark_words() {
     return _anticipated_mark_words;
@@ -375,11 +372,27 @@ protected:
   // detect when GC needs to trigger.
   void compute_headroom_adjustment() override;
 
-#ifdef KELVIN_DEPRECATE
+  // Add a normal (young or bootstrap) GC time to the GC time history.  
   void add_gc_time(double timestamp_at_start, double duration);
+
+  // Add a degenerated (young or bootstrap) GC time to the GC time history.
   void add_degenerated_gc_time(double timestamp_at_start, double duration);
-  double predict_gc_time(double timestamp_at_start);
+
+  // Predict the GC time of the next GC cycle.  This uses a linear prediction model if the next GC is anticipated to be
+  // young or bootstrap without promotion.  If the next GC is anticipated to be mixed GC or is anticipated to have promotions,
+  // the prediction is based on phase accounting.
+  double predict_gc_time(double timestamp_at_start) {
+    size_t mark_words = get_anticipated_mark_words();
+    double result;
+    if ((mark_words == 0) || ((result = predict_gc_time(mark_words)) == 0.0)) {
+      result =_gc_time_m * timestamp_at_start + _gc_time_b + _gc_time_sd * _margin_of_error_sd;
+#ifdef KELVIN_DEBUG_GC_TIME
+      log_info(gc)("SAH(" PTR_FORMAT ")::predict_gc_time(@timestamp: %.3f), gc_time_b: %.3f, gc_time_m: %.3f, gc_time_sd: %.3f, margin_of_error: %.3f, returns %.3f, nonservatively: %.3f",
+                   p2i(this), timestamp_at_start, _gc_time_b, _gc_time_m, _gc_time_sd, _margin_of_error_sd, result, result - _gc_time_sd * _margin_of_error_sd);
 #endif
+    }
+    return result;
+  }
 
   // Keep track of SPIKE_ACCELERATION_SAMPLE_SIZE most recent spike allocation rate measurements. Note that it is
   // typical to experience a small spike following end of GC cycle, as mutator threads refresh their TLABs.  But

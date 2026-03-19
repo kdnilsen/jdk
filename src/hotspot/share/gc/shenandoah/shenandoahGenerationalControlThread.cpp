@@ -254,7 +254,8 @@ void ShenandoahGenerationalControlThread::run_gc_cycle(const ShenandoahGCRequest
 
   GCIdMark gc_id_mark;
 
-  if (gc_mode() != servicing_old) {
+  if ((gc_mode() != servicing_old) && (gc_mode() != stw_degenerated)) {
+    // If mode is stw_degenerated, count bytes allocated from the start of the conc GC that experienced alloc failure.
     _heap->reset_bytes_allocated_since_gc_start();
   }
 
@@ -473,7 +474,7 @@ bool ShenandoahGenerationalControlThread::resume_concurrent_old_cycle(Shenandoah
   ShenandoahOldGC gc(generation, _allow_old_preemption);
   if (gc.collect(cause)) {
     _heap->notify_gc_progress();
-    generation->record_success_concurrent(false);
+    generation->record_success_concurrent(gc.abbreviated(), gc.mixed());
   }
 
   if (_heap->cancelled_gc()) {
@@ -546,7 +547,7 @@ void ShenandoahGenerationalControlThread::service_concurrent_cycle(ShenandoahGen
   if (gc.collect(cause)) {
     // Cycle is complete
     _heap->notify_gc_progress();
-    generation->record_success_concurrent(gc.abbreviated());
+    generation->record_success_concurrent(gc.abbreviated(), gc.mixed());
   } else {
     assert(_heap->cancelled_gc(), "Must have been cancelled");
     check_cancellation_or_degen(gc.degen_point());

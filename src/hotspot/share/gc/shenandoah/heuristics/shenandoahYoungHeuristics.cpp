@@ -45,10 +45,6 @@ ShenandoahYoungHeuristics::ShenandoahYoungHeuristics(ShenandoahYoungGeneration* 
       _regions_most_recently_promoted_in_place(0),
       _live_words_most_recently_promoted_in_place(0),
       _anticipated_pip_words(0) {
-#undef KELVIN_YOUNG
-#ifdef KELVIN_YOUNG
-  log_info(gc)("Instantiating ShenYoungHeuristics, my name is: %s", name());
-#endif
 }
 
 void ShenandoahYoungHeuristics::choose_collection_set_from_regiondata(ShenandoahCollectionSet* cset,
@@ -286,42 +282,26 @@ size_t ShenandoahYoungHeuristics::bytes_of_allocation_runway_before_gc_trigger(s
   return MIN3(evac_slack_spiking, evac_slack_avg, evac_min_threshold);
 }
 
-
-double ShenandoahYoungHeuristics::predict_gc_time() {
-  size_t mark_words = get_anticipated_mark_words();
-  if (mark_words == 0) {
-    // Use other heuristics to trigger.
-    return 0.0;
-  }
+double ShenandoahYoungHeuristics::predict_gc_time(size_t mark_words) {
+  assert(mark_words != 0, "(mark_words == 0) implies linear prediction of gc time");
   double mark_time = predict_mark_time(mark_words);
   double evac_time = predict_evac_time(get_anticipated_evac_words(), get_anticipated_pip_words());
   double update_time = predict_update_time(get_anticipated_update_words());
-  double result = mark_time + evac_time + update_time;
-#define KELVIN_PREDICT
+  if ((mark_time == 0.0) || (evac_time == 0.0) || (update_time == 0.0)) {
+#undef KELVIN_PREDICT
 #ifdef KELVIN_PREDICT
-  log_info(gc)("YH::predict_gc: %.3f from mark(%zu): %.3f, evac(%zu, %zu): %.3f, update(%zu): %.3f returns %.3f",
-	       result, get_anticipated_mark_words(), mark_time, get_anticipated_evac_words(), get_anticipated_pip_words(),
-	       evac_time, get_anticipated_update_words(), update_time, result);
+    log_info(gc)("YH(" PTR_FORMAT ")::predict_gc(%zu): %.3f from short circuit", p2i(this), mark_words, 0.0);
 #endif
-  return result;
-}
-
-double ShenandoahYoungHeuristics::predict_gc_time_nonconservative() {
-  size_t mark_words = get_anticipated_mark_words();
-  if (mark_words == 0) {
-    // Use other heuristics to trigger.
     return 0.0;
-  }
-  double mark_time = predict_mark_time_nonconservative(mark_words);
-  double evac_time = predict_evac_time_nonconservative(get_anticipated_evac_words(), get_anticipated_pip_words());
-  double update_time = predict_update_time_nonconservative(get_anticipated_update_words());
-  double result = mark_time + evac_time + update_time;
+  } else {
+    double result = mark_time + evac_time + update_time;
 #ifdef KELVIN_PREDICT
-  log_info(gc)("YH::predict_gc: %.3f from mark(%zu): %.3f, evac(%zu, %zu): %.3f, update(%zu): %.3f returns %.3f",
-	       result, get_anticipated_mark_words(), mark_time, get_anticipated_evac_words(), get_anticipated_pip_words(),
-	       evac_time, get_anticipated_update_words(), update_time, result);
+    log_info(gc)("YH(" PTR_FORMAT ")::predict_gc(%zu): %.3f from mark(): %.3f, evac(%zu, %zu): %.3f, update(%zu): %.3f returns %.3f",
+                 p2i(this), mark_words, result, mark_time, get_anticipated_evac_words(), get_anticipated_pip_words(),
+                 evac_time, get_anticipated_update_words(), update_time, result);
 #endif
-  return result;
+    return result;
+  }
 }
 
 double ShenandoahYoungHeuristics::predict_evac_time(size_t anticipated_evac_words, size_t anticipated_pip_words) {
@@ -330,15 +310,6 @@ double ShenandoahYoungHeuristics::predict_evac_time(size_t anticipated_evac_word
 
 double ShenandoahYoungHeuristics::predict_final_roots_time(size_t anticipated_pip_words) {
   return _phase_stats[ShenandoahMajorGCPhase::_final_roots].predict_at((double) anticipated_pip_words);
-}
-
-double ShenandoahYoungHeuristics::predict_final_roots_time_nonconservative(size_t anticipated_pip_words) {
-  return _phase_stats[ShenandoahMajorGCPhase::_final_roots].predict_at_without_stdev((double) anticipated_pip_words);
-}
-
-double ShenandoahYoungHeuristics::predict_evac_time_nonconservative(size_t anticipated_evac_words, size_t anticipated_pip_words) {
-  return _phase_stats[ShenandoahMajorGCPhase::_evac].predict_at_without_stdev((double) (5 * anticipated_evac_words
-                                                                                        + anticipated_pip_words));
 }
 
 void ShenandoahYoungHeuristics:: update_anticipated_after_completed_gc(size_t old_cset_regions, size_t young_cset_regions,
@@ -351,6 +322,11 @@ void ShenandoahYoungHeuristics:: update_anticipated_after_completed_gc(size_t ol
   if ((mixed_candidate_live_words + promo_potential_words == 0)) {
     // No need for any reserve in old.  Setting anticipated_mark_words to zero denotes that we use pre-existing linear
     // predictor for gc-time estimates.
+#undef KELVIN_MARK_WORDS
+#ifdef KELVIN_MARK_WORDS
+    log_info(gc)("SYH(" PTR_FORMAT ")::set_anticipated_after_completed_gc() zeros mark_words because mixed: %zu, promo: %zu",
+                 p2i(this), mixed_candidate_live_words, promo_potential_words);
+#endif
     set_anticipated_mark_words(0);
     return;
   } else {
@@ -407,6 +383,10 @@ void ShenandoahYoungHeuristics:: update_anticipated_after_completed_gc(size_t ol
       anticipated_old_update = get_remset_words_in_most_recent_mark_scan();
     }
 
+#ifdef KELVIN_MARK_WORDS
+    log_info(gc)("SYH(" PTR_FORMAT ")::set_anticipated_after_completed_gc() non-zero mark_words because mixed: %zu, promo: %zu",
+                 p2i(this), mixed_candidate_live_words, promo_potential_words);
+#endif
     // We'll assume all promotion is by evacuation.  If we find out following mark that some of the promotion will be
     // in place, we will adjust anticipation there.
     set_anticipated_pip_words(0);

@@ -250,14 +250,13 @@ void ShenandoahHeuristics::log_trigger(const char* fmt, ...) {
   }
 }
 
-void ShenandoahHeuristics::record_success_concurrent() {
+void ShenandoahHeuristics::record_success_concurrent(bool is_abbreviated, bool is_mixed) {
   _gc_cycle_time_history->add(elapsed_cycle_time());
   _gc_times_learned++;
-
   adjust_penalty(Concurrent_Adjust);
 }
 
-void ShenandoahHeuristics::record_degenerated() {
+void ShenandoahHeuristics::record_degenerated(bool is_abbreviated, bool is_mixed) {
   adjust_penalty(Degenerated_Penalty);
 }
 

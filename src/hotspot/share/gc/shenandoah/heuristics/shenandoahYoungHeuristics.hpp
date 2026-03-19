@@ -169,17 +169,13 @@ public:
   double predict_evac_time(size_t anticipated_evac_words, size_t anticipated_pip_words);
   double predict_final_roots_time(size_t anticipated_pip_words);
 
-  double predict_evac_time_nonconservative(size_t anticipated_evac_words, size_t anticipated_pip_words);
-  double predict_final_roots_time_nonconservative(size_t anticipated_pip_words);
-
-  double predict_gc_time() override;
-  double predict_gc_time_nonconservative() override;
+  double predict_gc_time(size_t anticipated_mark_words) override;
 
   // Setting this value to zero denotes current GC cycle to be "traditional young", so average GC cycle tine is best predictor.
   inline void set_anticipated_mark_words(size_t words) {
 #undef KELVIN_ANTICIPATION
 #ifdef KELVIN_ANTICIPATION
-    log_info(gc)("SYH::set_anticipated_mark_words(%zu)", words);
+    log_info(gc)("SYH(" PTR_FORMAT ")::set_anticipated_mark_words(%zu)", p2i(this), words);
 #endif
     _anticipated_mark_words = words;
   }

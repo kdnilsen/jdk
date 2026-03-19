@@ -213,9 +213,12 @@ void ShenandoahAdaptiveHeuristics::choose_collection_set_from_regiondata(Shenand
   }
 }
 
-#ifdef KELVIN_DEPRECATE
 void ShenandoahAdaptiveHeuristics::add_degenerated_gc_time(double timestamp, double gc_time) {
   // Conservatively add sample into linear model If this time is above the predicted concurrent gc time
+#undef KELVIN_ADD_GC_TIME
+#ifdef KELVIN_ADD_GC_TIME
+  log_info(gc)("SAH(" PTR_FORMAT ")::add_degenerated_time(timestamp: %.3f, gc_time: %.3f)", p2i(this), timestamp, gc_time);
+#endif
   if (predict_gc_time(timestamp) < gc_time) {
     add_gc_time(timestamp, gc_time);
   }
@@ -223,6 +226,11 @@ void ShenandoahAdaptiveHeuristics::add_degenerated_gc_time(double timestamp, dou
 
 void ShenandoahAdaptiveHeuristics::add_gc_time(double timestamp, double gc_time) {
   // Update best-fit linear predictor of GC time
+
+#ifdef KELVIN_ADD_GC_TIME
+  log_info(gc)("SAH(" PTR_FORMAT ")::add_gc_time(timestamp: %.3f, gc_time: %.3f)", p2i(this), timestamp, gc_time);
+#endif
+
   uint index = (_gc_time_first_sample_index + _gc_time_num_samples) % GC_TIME_SAMPLE_SIZE;
   if (_gc_time_num_samples == GC_TIME_SAMPLE_SIZE) {
     _gc_time_sum_of_timestamps -= _gc_time_timestamps[index];
@@ -276,52 +284,25 @@ void ShenandoahAdaptiveHeuristics::add_gc_time(double timestamp, double gc_time)
     _gc_time_sd = sqrt(sum_of_squared_deviations / _gc_time_num_samples);
   }
 }
-#endif
 
-double ShenandoahAdaptiveHeuristics::predict_gc_time() {
-  size_t mark_words = get_anticipated_mark_words();
-  if (mark_words == 0) {
-    // Use other heuristics to trigger.
-    return 0.0;
-  }
+double ShenandoahAdaptiveHeuristics::predict_gc_time(size_t mark_words) {
+  assert(mark_words != 0, "(mark_words == 0) implies linear prediction of gc time");
   size_t evac_words = get_anticipated_evac_words();
   size_t update_words = get_anticipated_update_words();
   double mark_time = predict_mark_time(mark_words);
   double evac_time = predict_evac_time(evac_words, 0);
   double update_time = predict_update_time(update_words);
-  double result = mark_time + evac_time + update_time;
-#define KELVIN_DEBUG_GC_TIME
-#ifdef KELVIN_DEBUG_GC_TIME
-  log_info(gc)("AddaptiveHeuristics::predicting gc time: %.3f from mark(%zu): %.3f, evac(%zu): %.3f, update(%zu): %.3f",
-	       result, mark_words, mark_time, evac_words, evac_time, update_words, update_time);
-#endif
-  return result;
-}
-
-#ifdef KELVIN_DEPRECATE
-double ShenandoahAdaptiveHeuristics::predict_gc_time(double timestamp_at_start) {
-  return _gc_time_m * timestamp_at_start + _gc_time_b + _gc_time_sd * _margin_of_error_sd;;
-}
-// get rid of _gc_time_b, gc_time_sd, etc as well
-#endif
-
-double ShenandoahAdaptiveHeuristics::predict_gc_time_nonconservative() {
-  size_t mark_words = get_anticipated_mark_words();
-  if (mark_words == 0) {
-    // Use other heuristics to trigger.
+  if ((mark_time == 0.0) || (evac_time == 0.0) || (update_time == 0.0)) {
     return 0.0;
-  }
-  size_t evac_words = get_anticipated_evac_words();
-  size_t update_words = get_anticipated_update_words();
-  double mark_time = predict_mark_time_nonconservative(mark_words);
-  double evac_time = predict_evac_time_nonconservative(evac_words, 0);
-  double update_time = predict_update_time_nonconservative(update_words);
-  double result = mark_time + evac_time + update_time;
+  } else {
+    double result = mark_time + evac_time + update_time;
+#undef KELVIN_DEBUG_GC_TIME
 #ifdef KELVIN_DEBUG_GC_TIME
-  log_info(gc)("AddaptiveHeuristics::predicting gc time nonconservatively: %.3f from mark(%zu): %.3f, evac(%zu): %.3f, update(%zu): %.3f",
-	       result, mark_words, mark_time, evac_words, evac_time, update_words, update_time); 
+    log_info(gc)("SAH(" PTR_FORMAT ")::predict_gc_time(words: %zu), mark_time: %.3f, evac(%zu): %.3f, update(%zu): %.3f returns %.3f",
+                 p2i(this), mark_words, mark_time, evac_words, evac_time, update_words, update_time, result);
 #endif
-  return result;
+    return result;
+  }
 }
 
 // Marking effort is assumed to be a function of "time".  During steady state, marking efforts should be constant.  During
@@ -337,8 +318,9 @@ void ShenandoahAdaptiveHeuristics::record_mark_end(double now, size_t marked_wor
     double duration = now - start_phase_time;
 #undef KELVIN_MARK
 #ifdef KELVIN_MARK
-    log_info(gc)("Recording duration of _mark phase: %.6f for %zu words young live and surge level: %d",
-                 duration, marked_words, _surge_level);
+    uint _surge_level = 0;
+    log_info(gc)("SAH(" PTR_FORMAT ")::record_mark_end(marked_words: %zu) with surge level: %d, duration: %.3f",
+                 p2i(this), marked_words, _surge_level, duration);
 #endif
     record_phase_duration(ShenandoahMajorGCPhase::_mark, (double) marked_words, duration);
 #ifdef KELVIN_FUTURE_SURGE_SUPPORT
@@ -356,9 +338,11 @@ void ShenandoahAdaptiveHeuristics::record_evac_end(double now, size_t evacuated_
 #endif
     double start_phase_time = _phase_stats[ShenandoahMajorGCPhase::_evac].get_most_recent_start_time();
     double duration = now - start_phase_time;
+#undef KELVIN_DEVELOPMENT
 #ifdef KELVIN_DEVELOPMENT
-    log_info(gc)("Recording duration of _evac phase with (evacuated: %zu, promoted in place: %zu): %.3f with surge level: %d",
-                 evacuated_words, promoted_in_place_words, duration, _surge_level);
+    int _surge_level = 0;
+    log_info(gc)("SAH(" PTR_FORMAT ")::record_evac_end(evacuated_words: %zu, pip_words: %zu) with surge level: %d, duration: %.3f",
+                 p2i(this), evacuated_words, promoted_in_place_words, _surge_level, duration);
 #endif
     // Evacuation time is a linear function of both evacuated_words and promoted_in_place_words.  Analysis of selected
     // (not exhaustive) experiments shows that the proportionality constant for evacuated_words is 5 times larger than
@@ -388,8 +372,9 @@ void ShenandoahAdaptiveHeuristics::record_update_end(double now, size_t updated_
     double start_phase_time = _phase_stats[ShenandoahMajorGCPhase::_update].get_most_recent_start_time();
     double duration = now - start_phase_time;
 #ifdef KELVIN_DEVELOPMENT
-    log_info(gc)("Recording duration of _update phase with (updated_words: %zu): %.3f with surge_level: %d",
-                 updated_words, duration, _surge_level);
+    int _surge_level = 0;
+    log_info(gc)("SAH(" PTR_FORMAT ")::record_update_end(updated_words: %zu) with surge_leveL: %d, duration: %.3f",
+                 p2i(this), updated_words, _surge_level, duration);
 #endif
     record_phase_duration(ShenandoahMajorGCPhase::_update, (double) updated_words, duration);
 #ifdef KELVIN_FUTURE_SURGE_SUPPORT
@@ -405,8 +390,9 @@ void ShenandoahAdaptiveHeuristics::record_final_roots_end(double now, size_t pro
     double start_phase_time = _phase_stats[ShenandoahMajorGCPhase::_final_roots].get_most_recent_start_time();
     double duration = now - start_phase_time;
 #ifdef KELVIN_DEVELOPMENT
-    log_info(gc)("Recording duration of _final_roots phase with (pip_words: %zu): %.3f with surge_level: %d",
-                 promoted_in_place_words, duration, _surge_level);
+    int _surge_level = 0;
+    log_info(gc)("SAH(" PTR_FORMAT ")::record_final_roots(pip_words: %zu) with surge_level: %d, duration: %.3f",
+                 p2i(this), promoted_in_place_words, _surge_level, duration);
 #endif
     record_phase_duration(ShenandoahMajorGCPhase::_final_roots, (double) promoted_in_place_words, duration);
 #ifdef KELVIN_FUTURE_SURGE_SUPPORT
@@ -430,25 +416,6 @@ double ShenandoahAdaptiveHeuristics::predict_final_roots_time(size_t pip_words) 
   return _phase_stats[ShenandoahMajorGCPhase::_final_roots].predict_at((double) 0.0);
 }
 
-double ShenandoahAdaptiveHeuristics::predict_mark_time_nonconservative(size_t anticipated_marked_words) {
-  return _phase_stats[ShenandoahMajorGCPhase::_mark].predict_at_without_stdev((double) anticipated_marked_words);
-}
-
-double ShenandoahAdaptiveHeuristics::predict_evac_time_nonconservative(size_t anticipated_evac_words,
-                                                                       size_t anticipated_pip_words) {
-  return _phase_stats[ShenandoahMajorGCPhase::_evac].predict_at_without_stdev((double) (5 * anticipated_evac_words));
-}
-
-double ShenandoahAdaptiveHeuristics::predict_update_time_nonconservative(size_t anticipated_update_words) {
-  return _phase_stats[ShenandoahMajorGCPhase::_update].predict_at_without_stdev((double) anticipated_update_words);
-}
-
-double ShenandoahAdaptiveHeuristics::predict_final_roots_time_nonconservative(size_t pip_words) {
-  return _phase_stats[ShenandoahMajorGCPhase::_final_roots].predict_at_without_stdev((double) 0.0);
-}
-
-
-
 void ShenandoahAdaptiveHeuristics::add_rate_to_acceleration_history(double timestamp, double rate) {
   uint new_sample_index =
     (_spike_acceleration_first_sample_index + _spike_acceleration_num_samples) % _spike_acceleration_buffer_size;
@@ -470,22 +437,32 @@ void ShenandoahAdaptiveHeuristics::record_cycle_start() {
   double now = os::elapsedTime();
 #undef KELVIN_MARK
 #ifdef KELVIN_MARK
-  log_info(gc)("record_cycle_start(), most recent _mark start time: %.6f", now);
+  log_info(gc)("SAH(" PTR_FORMAT ")::record_cycle_start(), most recent _mark start time: %.6f", p2i(this), now);
 #endif
   _phase_stats[ShenandoahMajorGCPhase::_mark].set_most_recent_start_time(now);
 }
 
-void ShenandoahAdaptiveHeuristics::record_success_concurrent() {
-  ShenandoahHeuristics::record_success_concurrent();
+void ShenandoahAdaptiveHeuristics::record_success_concurrent(bool is_abbreviated, bool is_mixed) {
+  record_success_concurrent(false, is_abbreviated, is_mixed);
+}
+
+void ShenandoahAdaptiveHeuristics::record_success_concurrent(bool is_generational_global, bool is_abbreviated, bool is_mixed) {
+  ShenandoahHeuristics::record_success_concurrent(is_abbreviated, is_mixed);
   double now = os::elapsedTime();
-
-#ifdef KELVIN_DEPRECATE
-  // Should we not add GC time if this was an abbreviated cycle?
-  add_gc_time(_cycle_start, elapsed_cycle_time());
+  if (!is_generational_global && !is_abbreviated && !is_mixed) {
+    // Only add_gc_time() if this was a traditional (non-abbreviated, non-global) normal or bootstrap gc.
+    // With non-generational global GC, we do want to add the gc time to the prediction model.
+    add_gc_time(_cycle_start, elapsed_cycle_time());
+  }
+#undef KELVIN_ADD_GC_TIME
+#ifdef KELVIN_ADD_GC_TIME
+  else {
+    log_info(gc)("SAH(" PTR_FORMAT ")::Not add_gc_time(elapsed_time: %.3f) because is_generational_global: %s, cset_is_empty: %s, cset_has_old_regions: %s",
+                 p2i(this), elapsed_cycle_time(), is_generational_global? "true": "false",
+                 is_abbreviated? "true": "false", is_mixed? "true": "false");
+  }
 #endif
-
   size_t available = _space_info->available();
-
   double z_score = 0.0;
   double available_sd = _available.sd();
   if (available_sd > 0) {
@@ -533,11 +510,25 @@ void ShenandoahAdaptiveHeuristics::record_success_concurrent() {
   }
 }
 
-void ShenandoahAdaptiveHeuristics::record_degenerated() {
-  ShenandoahHeuristics::record_degenerated();
-#ifdef KELVIN_DEPRECATE
-  add_degenerated_gc_time(_precursor_cycle_start, elapsed_degenerated_cycle_time());
+void ShenandoahAdaptiveHeuristics::record_degenerated(bool is_abbreviated, bool is_mixed) {
+  record_degenerated(false, is_abbreviated, is_mixed);
+}
+
+void ShenandoahAdaptiveHeuristics::record_degenerated(bool is_generational_global, bool is_abbreviated, bool is_mixed) {
+  ShenandoahHeuristics::record_degenerated(is_abbreviated, is_mixed);
+  if (!is_generational_global && !is_abbreviated && !is_mixed) {
+    // Only add_degenerated_gc_time() if this was a traditional (non-abbreviated, non-global) normal or bootstrap gc.
+    // With non-generational global GC, we do want to add the gc time to the prediction model.
+    add_degenerated_gc_time(_precursor_cycle_start, elapsed_degenerated_cycle_time());
+  }
+#ifdef KELVIN_ADD_GC_TIME
+  else {
+    log_info(gc)("SAH(" PTR_FORMAT ")::Not add_degenerated_gc_time(elapsed_time: %.3f) because is_generational_global: %s, cset_is_empty: %s, cset_has_old_regions: %s",
+                 p2i(this), elapsed_cycle_time(), is_generational_global? "true": "false",
+                 is_abbreviated? "true": "false", is_mixed? "true": "false");
+  }
 #endif
+  
   // Adjust both trigger's parameters in the case of a degenerated GC because
   // either of them should have triggered earlier to avoid this case.
   adjust_margin_of_error(DEGENERATE_PENALTY_SD);
@@ -653,7 +644,9 @@ bool ShenandoahAdaptiveHeuristics::should_start_gc() {
   // represents memory available at the start of the current GC plus garbage reclaimed by the current GC. In a balanced,
   // fully utilized configuration, we will be starting each new GC cycle immediately following completion of the preceding
   // GC cycle.  In this configuration, we would expect half of R to be consumed during concurrent cycle GC(N) and half
-  // to be consumed during concurrent GC(N+1).
+  // to be consumed during concurrent GC(N+1).  R is a constant, but we don't know the value of this constant until after
+  // GC completes.  We express R in terms of A (memory allocated since the start of GC(N) and V, the amount of memory currently
+  // available to be allocated during concurent GC(N) and/or during the GC-idle span following completion of GC(N).
   //
   // Assume we want to delay GC trigger until:    A/V > 0.33
   //     This is equivalent to enforcing that:      A > 0.33V
@@ -668,22 +661,28 @@ bool ShenandoahAdaptiveHeuristics::should_start_gc() {
   if (3 * allocated <= available) {
     // Even though we will not issue an adaptive trigger unless a minimum threshold of memory has been allocated,
     // we still allow more generic triggers, such as guaranteed GC intervals, to act.
+#undef KELVIN_DEBUG_TRIGGER
+#ifdef KELVIN_DEBUG_TRIGGER
+    static int skip_count = 16;   // Logs are too verbose if we report every short-circuit result.
+    if (skip_count-- <= 0) {
+      log_info(gc)("SAH(" PTR_FORMAT ")::should_start_gc() short circuits because 3*allocated (%zu) <= available (%zu)",
+                   p2i(this), allocated, available);
+      skip_count = 16;
+    }
+#endif
     return ShenandoahHeuristics::should_start_gc();
   }
 
   avg_cycle_time = _gc_cycle_time_history->davg() + (_margin_of_error_sd * _gc_cycle_time_history->dsd());
   avg_alloc_rate = _allocation_rate.upper_bound(_margin_of_error_sd);
   if ((now - _previous_acceleration_sample_timestamp) >= (ShenandoahAccelerationSamplePeriod / 1000.0)) {
-#ifdef KELVIN_DEPRECATE
-    predicted_future_accelerated_gc_time =
+    predicted_future_gc_time =
       predict_gc_time(now + MAX2(get_planned_sleep_interval(), ShenandoahAccelerationSamplePeriod / 1000.0));
-#endif
-    predicted_future_gc_time = predict_gc_time();
-    double future_accelerated_planned_gc_time;
-#define KELVIN_PROGNOSTIC
+#undef KELVIN_PROGNOSTIC
 #ifdef KELVIN_PROGNOSTIC
     log_info(gc)("predicted_future_gc_time: %.3f, avg_cycle_time: %.3f", predicted_future_gc_time, avg_cycle_time);
 #endif
+    double future_accelerated_planned_gc_time;
     bool future_accelerated_planned_gc_time_is_average;
     if (predicted_future_gc_time > avg_cycle_time) {
       future_accelerated_planned_gc_time = predicted_future_gc_time;
@@ -819,10 +818,7 @@ bool ShenandoahAdaptiveHeuristics::should_start_gc() {
   }
 
   // Suppose we don't trigger now, but decide to trigger in the next regulator cycle.  What will be the GC time then?
-#ifdef KELVIN_DEPRECATE
   predicted_future_gc_time = predict_gc_time(now + get_planned_sleep_interval());
-  predicted_future_gc_time = predict_gc_time();
-#endif
   if (predicted_future_gc_time > avg_cycle_time) {
     future_planned_gc_time = predicted_future_gc_time;
     future_planned_gc_time_is_average = false;
@@ -840,7 +836,7 @@ bool ShenandoahAdaptiveHeuristics::should_start_gc() {
   if (future_planned_gc_time > avg_time_to_deplete_available) {
     log_trigger("%s GC time (%.2f ms) is above the time for average allocation rate (%.0f %sB/s)"
                 " to deplete free headroom (%zu%s) (margin of error = %.2f)",
-                future_planned_gc_time_is_average? "Average": "Linear prediction of", future_planned_gc_time * 1000,
+                future_planned_gc_time_is_average? "Average": "Modeled prediction of", future_planned_gc_time * 1000,
                 byte_size_in_proper_unit(avg_alloc_rate),    proper_unit_for_byte_size(avg_alloc_rate),
                 byte_size_in_proper_unit(allocatable_bytes), proper_unit_for_byte_size(allocatable_bytes),
                 _margin_of_error_sd);
@@ -1097,7 +1093,8 @@ void ShenandoahAdaptiveHeuristics::record_phase_duration(ShenandoahMajorGCPhase 
 #undef KELVIN_DEVELOPMENT
 #ifdef KELVIN_DEVELOPMENT
   const char* phase_name = stage_name(phase);
-  log_info(gc)("Recording duration of phase %s, adjusted by surge_level %u: %.3f", phase_name, _surge_level, duration);
+  log_info(gc)("SAH(" PTR_FORMAT ")::Recording duration of phase %s, adjusted by surge_level %u: %.3f",
+               p2i(this), phase_name, _surge_level, duration);
 #endif
   _phase_stats[phase].add_sample(x, duration);
 }
@@ -1154,7 +1151,7 @@ void ShenandoahPhaseTimeEstimator::add_sample(double x_value, double y_value) {
 
 #undef KELVIN_ESTIMATOR
 #ifdef KELVIN_ESTIMATOR
-  log_info(gc)("%s add_sample(x: %.3f, y: %.3f)", _name, x_value, y_value);
+  log_info(gc)("%s add_sample[%u](x: %.3f, y: %.3f)", _name, _num_samples, x_value, y_value);
 #endif
 
   if (_num_samples >= MaxSamples) {
@@ -1185,7 +1182,7 @@ double ShenandoahPhaseTimeEstimator::predict_at_without_stdev(double predict_at_
     return _most_recent_prediction_no_stdev;
   } else if (_num_samples > 2) {
 #ifdef KELVIN_ESTIMATOR
-    log_info(gc)("PhaseTimeEstimator::predict_at(%03f)", predict_at_x_value);
+    log_info(gc)("PhaseTimeEstimator[%s]::predict_at(%03f)", _name, predict_at_x_value);
 #endif
     double m = (_num_samples * _sum_of_xy - _sum_of_x * _sum_of_y) / (_num_samples * _sum_of_xx - _sum_of_x * _sum_of_x);
     double b = (_sum_of_y - m * _sum_of_x) / _num_samples;
@@ -1218,7 +1215,7 @@ double ShenandoahPhaseTimeEstimator::predict_at(double predict_at_x_value) {
     return _most_recent_prediction;
   } else if (_num_samples > 2) {
 #ifdef KELVIN_ESTIMATOR
-    log_info(gc)("PhaseTimeEstimator::predict_at(%03f)", predict_at_x_value);
+    log_info(gc)("PhaseTimeEstimator[%s]::predict_at(%03f)", _name, predict_at_x_value);
 #endif
     double m = (_num_samples * _sum_of_xy - _sum_of_x * _sum_of_y) / (_num_samples * _sum_of_xx - _sum_of_x * _sum_of_x);
     double b = (_sum_of_y - m * _sum_of_x) / _num_samples;

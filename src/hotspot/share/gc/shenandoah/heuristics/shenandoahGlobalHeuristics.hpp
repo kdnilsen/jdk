@@ -42,6 +42,8 @@ public:
   void choose_collection_set_from_regiondata(ShenandoahCollectionSet* cset,
                                              RegionData* data, size_t size,
                                              size_t actual_free) override;
+  void record_success_concurrent(bool is_abbreviated, bool is_mixed) override;
+  void record_degenerated(bool is_abbreviated, bool is_mixed) override;
 
 private:
   void choose_global_collection_set(ShenandoahCollectionSet* cset,
@@ -49,6 +51,5 @@ private:
                                     size_t size, size_t actual_free,
                                     size_t cur_young_garbage) const;
 };
-
 
 #endif // SHARE_GC_SHENANDOAH_HEURISTICS_SHENANDOAHGLOBALHEURISTICS_HPP

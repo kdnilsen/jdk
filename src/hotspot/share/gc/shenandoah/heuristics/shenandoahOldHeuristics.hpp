@@ -255,9 +255,9 @@ public:
   // Returns true if the old generation needs to prepare for marking, or continue marking.
   bool should_resume_old_cycle();
 
-  void record_success_concurrent() override;
+  void record_success_concurrent(bool is_abbreviated, bool is_mixed) override;
 
-  void record_degenerated() override;
+  void record_degenerated(bool is_abbreviated, bool is_mixed) override;
 
   void record_success_full() override;
 

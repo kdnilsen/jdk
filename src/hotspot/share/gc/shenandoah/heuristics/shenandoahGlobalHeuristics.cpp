@@ -259,3 +259,11 @@ void ShenandoahGlobalHeuristics::choose_global_collection_set(ShenandoahCollecti
   heap->old_generation()->set_evacuation_reserve(old_evac_reserve);
   heap->old_generation()->set_promoted_reserve(old_promo_reserve);
 }
+
+void ShenandoahGlobalHeuristics::record_success_concurrent(bool is_abbreviated, bool is_mixed) {
+  ShenandoahAdaptiveHeuristics::record_success_concurrent(true, is_abbreviated, is_mixed);
+}
+
+void ShenandoahGlobalHeuristics::record_degenerated(bool is_abbreviated, bool is_mixed) {
+  ShenandoahAdaptiveHeuristics::record_degenerated(true, is_abbreviated, is_mixed);
+}

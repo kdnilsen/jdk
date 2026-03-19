@@ -264,9 +264,9 @@ public:
 
   virtual bool should_degenerate_cycle();
 
-  virtual void record_success_concurrent();
+  virtual void record_success_concurrent(bool is_abbreviated, bool is_mixed);
 
-  virtual void record_degenerated();
+  virtual void record_degenerated(bool is_abbreviated, bool is_mixed);
 
   virtual void record_success_full();
 
@@ -354,46 +354,17 @@ public:
     return 0.0;
   }
 
-  // Predict gc time using conservative approximations of anticipated evac words and anticipated mark words.
-  virtual double predict_gc_time() {
+  // Predict gc time using conservative approximations of anticipated mark, evac, and update words.  Returns 0.0 if there
+  // is not enough history to make a prediction.
+  virtual double predict_gc_time(size_t mark_words) {
     //  Subclass ShenandoahAdaptiveHeuristics overrides for satb mode.
     //  Subclass ShenandoahYoungHeuristics overrides for generational mode.
+#undef KELVIN_PREDICT
+#ifdef KELVIN_PREDICT
+    log_info(gc)("SH(" PTR_FORMAT ")::predict_gc_time(%zu) returns hard-coded 0.0", p2i(this), mark_words);
+#endif
     return 0.0;
   }
-
-  // Predict gc time using non-conservative approximations of anticipated evac words and anticipated mark words.
-  // Non-conservative approximations do not add the standard deviation for recent measurements of these quantities.
-  virtual double predict_gc_time_nonconservative() {
-    //  Subclass ShenandoahAdaptiveHeuristics overrides for satb mode.
-    //  Subclass ShenandoahYoungHeuristics overrides for generational mode.
-    return 0.0;
-  }
-
-  virtual double predict_mark_time_nonconservative(size_t anticipated_marked_words) {
-    //  Subclass ShenandoahAdaptiveHeuristics overrides for satb mode.
-    //  Subclass ShenandoahYoungHeuristics overrides for generational mode.
-    return 0.0;
-  }
-
-  // For satb mode, anticipated_pip_words is zero.
-  virtual double predict_evac_time_nonconservative(size_t anticipated_evac_words, size_t anticipated_pip_words) {
-    //  Subclass ShenandoahAdaptiveHeuristics overrides for satb mode.
-    //  Subclass ShenandoahYoungHeuristics overrides for generational mode.
-    return 0.0;
-  }
-
-  virtual double predict_update_time_nonconservative(size_t anticipated_update_words) {
-    //  Subclass ShenandoahAdaptiveHeuristics overrides for satb mode.
-    //  Subclass ShenandoahYoungHeuristics overrides for generational mode.
-    return 0.0;
-  }
-
-  virtual double predict_final_roots_time_nonconservative(size_t pip_words) {
-    //  Subclass ShenandoahAdaptiveHeuristics overrides for satb mode.
-    //  Subclass ShenandoahYoungHeuristics overrides for generational mode.
-    return 0.0;
-  }
-
 
   virtual const char* name() = 0;
   virtual bool is_diagnostic() = 0;

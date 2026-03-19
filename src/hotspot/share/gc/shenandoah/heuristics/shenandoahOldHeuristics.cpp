@@ -604,6 +604,7 @@ size_t ShenandoahOldHeuristics::unprocessed_old_collection_candidates_garbage() 
 
 void ShenandoahOldHeuristics::set_unprocessed_old_collection_candidates_garbage(size_t initial_garbage) {
   _garbage_in_unprocessed_candidates = initial_garbage;
+#undef KELVIN_CANDIDATE_GARBAGE
 #ifdef KELVIN_CANDIDATE_GARBAGE
   log_info(gc)("set_unprocessed_old_collection_candidates_garbage(%zu)", initial_garbage);
 #endif
@@ -875,16 +876,16 @@ void ShenandoahOldHeuristics::adjust_old_garbage_threshold() {
   }
 }
 
-void ShenandoahOldHeuristics::record_success_concurrent() {
+void ShenandoahOldHeuristics::record_success_concurrent(bool is_abbreviated, bool is_mixed) {
   // Forget any triggers that occurred while OLD GC was ongoing.  If we really need to start another, it will retrigger.
   clear_triggers();
-  this->ShenandoahHeuristics::record_success_concurrent();
+  this->ShenandoahHeuristics::record_success_concurrent(is_abbreviated, is_mixed);
 }
 
-void ShenandoahOldHeuristics::record_degenerated() {
+void ShenandoahOldHeuristics::record_degenerated(bool is_abbreviated, bool is_mixed) {
   // Forget any triggers that occurred while OLD GC was ongoing.  If we really need to start another, it will retrigger.
   clear_triggers();
-  this->ShenandoahHeuristics::record_degenerated();
+  this->ShenandoahHeuristics::record_degenerated(is_abbreviated, is_mixed);
 }
 
 void ShenandoahOldHeuristics::record_success_full() {

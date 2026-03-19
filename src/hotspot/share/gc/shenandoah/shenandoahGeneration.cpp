@@ -443,7 +443,7 @@ size_t ShenandoahGeneration::available(size_t capacity) const {
   return result;
 }
 
-void ShenandoahGeneration::record_success_concurrent(bool abbreviated) {
-  heuristics()->record_success_concurrent();
-  ShenandoahHeap::heap()->shenandoah_policy()->record_success_concurrent(is_young(), abbreviated);
+void ShenandoahGeneration::record_success_concurrent(bool is_abbreviated, bool is_mixed) {
+  heuristics()->record_success_concurrent(is_abbreviated, is_mixed);
+  ShenandoahHeap::heap()->shenandoah_policy()->record_success_concurrent(is_young(), is_abbreviated);
 }

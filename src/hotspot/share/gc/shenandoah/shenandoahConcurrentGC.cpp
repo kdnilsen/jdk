@@ -94,7 +94,6 @@ ShenandoahConcurrentGC::ShenandoahConcurrentGC(ShenandoahGeneration* generation,
   ShenandoahGC(generation),
   _mark(generation),
   _degen_point(ShenandoahDegenPoint::_degenerated_unset),
-  _abbreviated(false),
   _do_old_gc_bootstrap(do_old_gc_bootstrap) {
 }
 
@@ -206,6 +205,9 @@ bool ShenandoahConcurrentGC::collect(GCCause::Cause cause) {
     if (is_generational) {
       size_t live_young_words_after_mark = young_heuristics->get_young_live_words_after_most_recent_mark();
       young_heuristics->record_mark_end(start_evac_time, live_young_words_after_mark);
+      if (ShenandoahHeap::heap()->collection_set()->has_old_regions()) {
+        _mixed = true;
+      }
     } else {
       size_t live_words_after_mark = heuristics->get_live_words_after_most_recent_mark();
       heuristics->record_mark_end(start_evac_time, live_words_after_mark);
