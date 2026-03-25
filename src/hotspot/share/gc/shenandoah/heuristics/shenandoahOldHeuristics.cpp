@@ -600,17 +600,9 @@ size_t ShenandoahOldHeuristics::unprocessed_old_collection_candidates_garbage() 
 
 void ShenandoahOldHeuristics::set_unprocessed_old_collection_candidates_garbage(size_t initial_garbage) {
   _garbage_in_unprocessed_candidates = initial_garbage;
-#undef KELVIN_CANDIDATE_GARBAGE
-#ifdef KELVIN_CANDIDATE_GARBAGE
-  log_info(gc)("set_unprocessed_old_collection_candidates_garbage(%zu)", initial_garbage);
-#endif
 }
 
 void ShenandoahOldHeuristics::decrease_unprocessed_old_collection_candidates_garbage(size_t reclaimed_garbage) {
-#ifdef KELVIN_CANDIDATE_GARBAGE
-  log_info(gc)("decrease_unprocessed_old_collection_candidates_garbage(%zu) from total %zu",
-               reclaimed_garbage, _garbage_in_unprocessed_candidates);
-#endif
   assert(reclaimed_garbage <= _garbage_in_unprocessed_candidates, "Cannot reclaim more garbage than was present");
   _garbage_in_unprocessed_candidates -= reclaimed_garbage;
 }

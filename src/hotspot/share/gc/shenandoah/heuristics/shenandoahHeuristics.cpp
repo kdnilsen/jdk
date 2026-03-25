@@ -254,20 +254,8 @@ void ShenandoahHeuristics::record_success_concurrent() {
       (cycle_time < _gc_cycle_time_history->davg() + (margin_of_error_sd() * _gc_cycle_time_history->dsd()))) {
     // Generally, we expect atypical cycles to take longer than the typical cycles.  But we'll add atypical times into
     // average if they help lower the standard deviation and/or running average.
-#undef KELVIN_GC_AVG
-#ifdef KELVIN_GC_AVG
     _gc_cycle_time_history->add(cycle_time);
-    log_info(gc)("KELVIN records successful gc time: %.3f with atypical: %x", cycle_time, (uint) gc_typical_encoding());
-#else
-    _gc_cycle_time_history->add(cycle_time);
-#endif
   }
-#ifdef KELVIN_GC_AVG
-  else {
-    log_info(gc)("KELVIN NOT recording successful gc time: %.3f because gc cycle is atypical: %x", cycle_time,
-                 (uint) gc_typical_encoding());
-  }
-#endif
   _gc_times_learned++;
   adjust_penalty(Concurrent_Adjust);
 }

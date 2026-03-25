@@ -85,11 +85,11 @@ private:
   // During construction of the collection set, we keep track of regions that are eligible
   // for promotion in place. These fields track the count of those humongous and regular regions.
   // This data is used to force the evacuation phase even when the collection set is otherwise
-  // empty.
-  size_t _promotable_humongous_regions;
-  size_t _promotable_regular_regions;
-  size_t _promotable_humongous_region_live_data; 
-  size_t _promotable_regular_region_live_data;
+  // empty.  Live data is represented in words.
+  size_t _in_place_promotable_humongous_regions;
+  size_t _in_place_promotable_regular_regions;
+  size_t _in_place_promotable_humongous_region_live_data;
+  size_t _in_place_promotable_regular_region_live_data;
 
   // True if old regions may be safely traversed by the remembered set scan.
   bool _is_parsable;
@@ -165,15 +165,23 @@ public:
   size_t get_pad_for_promote_in_place() const { return _pad_for_promote_in_place; }
 
   // See description in field declaration
-  void set_expected_humongous_region_promotions(size_t region_count)    { _promotable_humongous_regions = region_count; }
-  void set_expected_regular_region_promotions(size_t region_count)      { _promotable_regular_regions = region_count; }
-  void set_expected_promotable_humongous_region_live_data(size_t words) { _promotable_humongous_region_live_data = words; }
-  void set_expected_promotable_regular_region_live_data(size_t words)   { _promotable_regular_region_live_data = words; } 
+  void set_expected_humongous_region_in_place_promotions(size_t region_count) {
+    _in_place_promotable_humongous_regions = region_count;
+  }
+  void set_expected_regular_region_in_place_promotions(size_t region_count) {
+    _in_place_promotable_regular_regions = region_count;
+  }
+  void set_expected_in_place_promotable_humongous_region_live_data_words(size_t words) {
+    _in_place_promotable_humongous_region_live_data = words;
+  }
+  void set_expected_in_place_promotable_regular_region_live_data_words(size_t words) {
+    _in_place_promotable_regular_region_live_data = words;
+  }
   size_t get_expected_in_place_promotions() const { 
-    return _promotable_humongous_regions + _promotable_regular_regions;
+    return _in_place_promotable_humongous_regions + _in_place_promotable_regular_regions;
   }
   size_t get_expected_in_place_promotable_live_words() {
-    return _promotable_regular_region_live_data + _promotable_humongous_region_live_data;
+    return _in_place_promotable_regular_region_live_data + _in_place_promotable_humongous_region_live_data;
   }
   bool has_in_place_promotions() const { return get_expected_in_place_promotions() > 0; }
 

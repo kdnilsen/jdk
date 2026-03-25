@@ -122,16 +122,6 @@ public:
     return _young_live_words_after_most_recent_mark;
   }
 
-#ifdef KELVIN_NOT_NEEDED_MAYBE
-  inline void set_words_most_recently_promoted(size_t words) {
-    _words_most_recently_promoted = words;
-  }
-
-  inline size_t get_words_most_recently_promoted() {
-    return _words_most_recently_promoted;
-  }
-#endif
-
   inline void set_remset_words_in_most_recent_mark_scan(size_t words) {
     _remset_words_in_most_recent_mark_scan = words;
   }
@@ -139,16 +129,6 @@ public:
   inline size_t get_remset_words_in_most_recent_mark_scan() {
     return _remset_words_in_most_recent_mark_scan;
   }
-
-#ifdef KELVIN_REDUNDANT
-  inline void set_live_words_most_recently_evacuated(size_t words) {
-    _live_words_most_recently_evacuated = words;
-  }
-
-  inline size_t get_live_words_most_recently_evacuated() {
-    return _live_words_most_recently_evacuated;
-  }
-#endif
 
   inline void set_regions_most_recently_promoted_in_place(size_t regions) {
     _regions_most_recently_promoted_in_place = regions;
@@ -173,17 +153,10 @@ public:
 
   // Setting this value to zero denotes current GC cycle to be "traditional young", so average GC cycle tine is best predictor.
   inline void set_anticipated_mark_words(size_t words) {
-#undef KELVIN_ANTICIPATION
-#ifdef KELVIN_ANTICIPATION
-    log_info(gc)("SYH(" PTR_FORMAT ")::set_anticipated_mark_words(%zu)", p2i(this), words);
-#endif
     _anticipated_mark_words = words;
   }
 
   inline void set_anticipated_pip_words(size_t words) {
-#ifdef KELVIN_ANTICIPATION
-    log_info(gc)("SYH::set_anticipated_pip_words(%zu)", words);
-#endif
     _anticipated_pip_words = words;
   }
 

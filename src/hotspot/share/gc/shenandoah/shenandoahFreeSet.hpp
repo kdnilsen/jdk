@@ -672,14 +672,6 @@ public:
   // in time within each GC cycle.  For certain GC cycles, the value returned may include some bytes allocated before
   // the start of the current GC cycle.
   inline size_t get_bytes_allocated_since_gc_start() const {
-#undef KELVIN_BYTES_ALLOCATED_SINCE_GC
-#ifdef KELVIN_BYTES_ALLOCATED_SINCE_GC
-    static int skip_count = 16;
-    if (skip_count-- == 0) {
-      log_info(gc)("SFS::get_bytes_allocated_since_gc_start(): %zu", _mutator_bytes_allocated_since_gc_start);
-      skip_count = 16;
-    }
-#endif
     return _mutator_bytes_allocated_since_gc_start;
   }
 

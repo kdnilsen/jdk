@@ -593,10 +593,6 @@ void ShenandoahConcurrentGC::entry_cleanup_early() {
     // This is an abbreviated cycle.  Rebuild the freeset in order to establish reserves for the next GC cycle.  Doing
     // the rebuild ASAP also expedites availability of immediate trash, reducing the likelihood that we will degenerate
     // during promote-in-place processing.
-#undef KELVIN_REBUILD
-#ifdef KELVIN_REBUILD
-    log_info(gc)("rebuild_free_set() called from ShenConcGC::entry_cleanup_early()");
-#endif
     heap->rebuild_free_set(true /*concurrent*/);
   }
 }
@@ -1273,10 +1269,6 @@ void ShenandoahConcurrentGC::op_final_update_refs() {
     Universe::verify();
   }
 
-#undef KELVIN_REBUILD
-#ifdef KELVIN_REBUILD
-    log_info(gc)("rebuild_free_set() called from ShenConcGC::op_final_update_refs()");
-#endif
   heap->rebuild_free_set(true /*concurrent*/);
   _generation->heuristics()->start_idle_span();
 

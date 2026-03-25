@@ -411,10 +411,6 @@ public:
   virtual double predict_gc_time(size_t mark_words) {
     //  Subclass ShenandoahAdaptiveHeuristics overrides for satb mode.
     //  Subclass ShenandoahYoungHeuristics overrides for generational mode.
-#undef KELVIN_PREDICT
-#ifdef KELVIN_PREDICT
-    log_info(gc)("SH(" PTR_FORMAT ")::predict_gc_time(%zu) returns hard-coded 0.0", p2i(this), mark_words);
-#endif
     return 0.0;
   }
 

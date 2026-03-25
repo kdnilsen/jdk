@@ -246,12 +246,6 @@ protected:
     SPIKE, RATE, OTHER
   };
 
-#ifdef KELVIN_DEPRECATE
-  void adjust_last_trigger_parameters(double amount);
-  void adjust_margin_of_error(double amount);
-  void adjust_spike_threshold(double amount);
-#endif
-
   void record_success_concurrent() override;
 
   // Returns number of words that can be allocated before we need to trigger next GC, given available in bytes.
@@ -323,10 +317,6 @@ protected:
   }
 
   inline void set_anticipated_evac_words(size_t words) {
-#undef KELVIN_ANTICIPATION
-#ifdef KELVIN_ANTICIPATION
-    log_info(gc)("SAH::set_anticipated_evac_words(%zu)", words);
-#endif
     _anticipated_evac_words = words;
   }
 
@@ -335,9 +325,6 @@ protected:
   }
 
   inline void set_anticipated_update_words(size_t words) {
-#ifdef KELVIN_ANTICIPATION
-    log_info(gc)("SAH::set_anticipated_update_words(%zu)", words);
-#endif
     _anticipated_update_words =  words;
   }
 

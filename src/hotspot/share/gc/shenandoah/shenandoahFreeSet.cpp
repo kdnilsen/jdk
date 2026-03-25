@@ -304,9 +304,6 @@ void ShenandoahFreeSet::reset_bytes_allocated_since_gc_start(size_t initial_byte
   // get_bytes_allocated_since_previous_cycle() is robust to this possibility, as are triggering heuristics.  The current
   // implementation assumes we are better off to tolerate the very rare race rather than impose a synchronization penalty
   // on every update and fetch.  (Perhaps it would be better to make the opposite tradeoff for improved maintainability.)
-#ifdef KELVIN_BYTES_ALLOCATED_SINCE_GC
-  log_info(gc)("SFS::reset_bytes_allocated_since_gc_start(): %zu", initial_bytes_allocated);
-#endif
   _mutator_bytes_allocated_since_gc_start = initial_bytes_allocated;
   _total_bytes_previously_allocated += original_mutator_bytes_allocated_since_gc_start - initial_bytes_allocated;
 }
