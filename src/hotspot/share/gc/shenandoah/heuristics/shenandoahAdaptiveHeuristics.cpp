@@ -417,6 +417,19 @@ double ShenandoahAdaptiveHeuristics::predict_final_roots_time(size_t pip_words) 
   return _phase_stats[ShenandoahMajorGCPhase::_final_roots].predict_at((double) 0.0);
 }
 
+double ShenandoahAdaptiveHeuristics::predict_gc_time(double timestamp_at_start) {
+  size_t mark_words = get_anticipated_mark_words();
+  double result;
+  if ((mark_words == 0) || ((result = predict_gc_time(mark_words)) == 0.0)) {
+    result =_gc_time_m * timestamp_at_start + _gc_time_b + _gc_time_sd * _margin_of_error_sd;
+#ifdef KELVIN_DEBUG_GC_TIME
+    log_info(gc)("SAH(" PTR_FORMAT ")::predict_gc_time(@timestamp: %.3f), gc_time_b: %.3f, gc_time_m: %.3f, gc_time_sd: %.3f, margin_of_error: %.3f, returns %.3f, nonservatively: %.3f",
+                 p2i(this), timestamp_at_start, _gc_time_b, _gc_time_m, _gc_time_sd, _margin_of_error_sd, result, result - _gc_time_sd * _margin_of_error_sd);
+#endif
+  }
+  return result;
+}
+
 void ShenandoahAdaptiveHeuristics::add_rate_to_acceleration_history(double timestamp, double rate) {
   uint new_sample_index =
     (_spike_acceleration_first_sample_index + _spike_acceleration_num_samples) % _spike_acceleration_buffer_size;
@@ -931,7 +944,7 @@ size_t ShenandoahAdaptiveHeuristics::accelerated_consumption(double& acceleratio
       if (i > 0) {
         // first sample not included in weighted average because it has no weight.
         double sample_weight = x_array[i] - x_array[i-1];
-        weighted_y_sum = y_array[i] * sample_weight;
+        weighted_y_sum += y_array[i] * sample_weight;
         total_weight += sample_weight;
       }
       y_sum += y_array[i];

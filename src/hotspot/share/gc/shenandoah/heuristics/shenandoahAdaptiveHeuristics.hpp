@@ -383,18 +383,7 @@ protected:
   // Predict the GC time of the next GC cycle.  This uses a linear prediction model if the next GC is anticipated to be
   // young or bootstrap without promotion.  If the next GC is anticipated to be mixed GC or is anticipated to have promotions,
   // the prediction is based on phase accounting.
-  double predict_gc_time(double timestamp_at_start) {
-    size_t mark_words = get_anticipated_mark_words();
-    double result;
-    if ((mark_words == 0) || ((result = predict_gc_time(mark_words)) == 0.0)) {
-      result =_gc_time_m * timestamp_at_start + _gc_time_b + _gc_time_sd * _margin_of_error_sd;
-#ifdef KELVIN_DEBUG_GC_TIME
-      log_info(gc)("SAH(" PTR_FORMAT ")::predict_gc_time(@timestamp: %.3f), gc_time_b: %.3f, gc_time_m: %.3f, gc_time_sd: %.3f, margin_of_error: %.3f, returns %.3f, nonservatively: %.3f",
-                   p2i(this), timestamp_at_start, _gc_time_b, _gc_time_m, _gc_time_sd, _margin_of_error_sd, result, result - _gc_time_sd * _margin_of_error_sd);
-#endif
-    }
-    return result;
-  }
+  double predict_gc_time(double timestamp_at_start);
 
   // Keep track of SPIKE_ACCELERATION_SAMPLE_SIZE most recent spike allocation rate measurements. Note that it is
   // typical to experience a small spike following end of GC cycle, as mutator threads refresh their TLABs.  But
