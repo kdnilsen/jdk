@@ -876,16 +876,16 @@ void ShenandoahOldHeuristics::adjust_old_garbage_threshold() {
   }
 }
 
-void ShenandoahOldHeuristics::record_success_concurrent(bool is_abbreviated, bool is_mixed) {
+void ShenandoahOldHeuristics::record_success_concurrent() {
   // Forget any triggers that occurred while OLD GC was ongoing.  If we really need to start another, it will retrigger.
   clear_triggers();
-  this->ShenandoahHeuristics::record_success_concurrent(is_abbreviated, is_mixed);
+  this->ShenandoahHeuristics::record_success_concurrent();
 }
 
-void ShenandoahOldHeuristics::record_degenerated(bool is_abbreviated, bool is_mixed) {
+void ShenandoahOldHeuristics::record_degenerated() {
   // Forget any triggers that occurred while OLD GC was ongoing.  If we really need to start another, it will retrigger.
   clear_triggers();
-  this->ShenandoahHeuristics::record_degenerated(is_abbreviated, is_mixed);
+  this->ShenandoahHeuristics::record_degenerated();
 }
 
 void ShenandoahOldHeuristics::record_success_full() {

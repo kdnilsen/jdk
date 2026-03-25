@@ -39,9 +39,10 @@ ShenandoahGlobalHeuristics::ShenandoahGlobalHeuristics(ShenandoahGlobalGeneratio
 void ShenandoahGlobalHeuristics::choose_collection_set_from_regiondata(ShenandoahCollectionSet* cset,
                                                                        RegionData* data, size_t size,
                                                                        size_t actual_free) {
+  assume_gc_cycle_is_typical();
+  gc_cycle_is_generational_global();
   // Better select garbage-first regions
   QuickSort::sort<RegionData>(data, size, compare_by_garbage);
-
   choose_global_collection_set(cset, data, size, actual_free, 0 /* cur_young_garbage */);
 }
 
@@ -49,7 +50,7 @@ void ShenandoahGlobalHeuristics::choose_collection_set_from_regiondata(Shenandoa
 void ShenandoahGlobalHeuristics::choose_global_collection_set(ShenandoahCollectionSet* cset,
                                                               const ShenandoahHeuristics::RegionData* data,
                                                               size_t size, size_t actual_free,
-                                                              size_t cur_young_garbage) const {
+                                                              size_t cur_young_garbage) {
   shenandoah_assert_heaplocked_or_safepoint();
   auto heap = ShenandoahGenerationalHeap::heap();
   auto free_set = heap->free_set();
@@ -255,15 +256,20 @@ void ShenandoahGlobalHeuristics::choose_global_collection_set(ShenandoahCollecti
     heap->free_set()->move_unaffiliated_regions_from_collector_to_old_collector(regions_to_transfer);
   }
 
+  if (old_evac_reserve > 0) {
+    gc_cycle_has_old();
+  }
+
+  if (10 * old_promo_reserve > young_evac_reserve) {
+    gc_cycle_has_significant_promotion();
+  }
+
+  if (young_evac_reserve + old_evac_reserve + old_promo_reserve == 0) {
+    gc_cycle_is_abbreviated();
+  }
+
   heap->young_generation()->set_evacuation_reserve(young_evac_reserve);
   heap->old_generation()->set_evacuation_reserve(old_evac_reserve);
   heap->old_generation()->set_promoted_reserve(old_promo_reserve);
 }
 
-void ShenandoahGlobalHeuristics::record_success_concurrent(bool is_abbreviated, bool is_mixed) {
-  ShenandoahAdaptiveHeuristics::record_success_concurrent(true, is_abbreviated, is_mixed);
-}
-
-void ShenandoahGlobalHeuristics::record_degenerated(bool is_abbreviated, bool is_mixed) {
-  ShenandoahAdaptiveHeuristics::record_degenerated(true, is_abbreviated, is_mixed);
-}

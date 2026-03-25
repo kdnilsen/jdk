@@ -571,8 +571,8 @@ ShenandoahHeuristics* ShenandoahOldGeneration::initialize_heuristics(ShenandoahM
   return _heuristics;
 }
 
-void ShenandoahOldGeneration::record_success_concurrent(bool is_abbreviated, bool is_mixed) {
-  heuristics()->record_success_concurrent(is_abbreviated, is_mixed);
+void ShenandoahOldGeneration::record_success_concurrent(bool is_abbreviated) {
+  heuristics()->record_success_concurrent();
   ShenandoahHeap::heap()->shenandoah_policy()->record_success_old();
 }
 

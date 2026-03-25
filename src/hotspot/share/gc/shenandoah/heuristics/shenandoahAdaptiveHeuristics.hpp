@@ -191,8 +191,7 @@ public:
                                              size_t actual_free) override;
 
   void record_cycle_start() override;
-  void record_degenerated(bool is_abbreviated, bool is_mixed) override;
-  void record_degenerated(bool is_generational_global, bool is_abbreviated, bool is_mixed);
+  void record_degenerated() override;
   void record_success_full() override;
 
   bool should_start_gc() override;
@@ -253,12 +252,15 @@ protected:
   void adjust_spike_threshold(double amount);
 #endif
 
-  void record_success_concurrent(bool is_abbreviated, bool is_mixed) override;
-  void record_success_concurrent(bool is_generational_global, bool is_abbreviated, bool is_mixed);
+  void record_success_concurrent() override;
 
   // Returns number of words that can be allocated before we need to trigger next GC, given available in bytes.
   inline size_t allocatable(size_t available) const {
     return (available > _headroom_adjustment)? (available - _headroom_adjustment) / HeapWordSize: 0;
+  }
+
+  double margin_of_error_sd() const override {
+    return _margin_of_error_sd;
   }
 
 protected:

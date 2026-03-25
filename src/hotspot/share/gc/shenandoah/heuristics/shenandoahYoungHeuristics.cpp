@@ -79,12 +79,21 @@ void ShenandoahYoungHeuristics::choose_collection_set_from_regiondata(Shenandoah
 
   size_t young_words_evacuated = cset->get_young_bytes_reserved_for_evacuation() / HeapWordSize;
   size_t old_words_evacuated = cset->get_old_bytes_reserved_for_evacuation() / HeapWordSize;
+#undef KELVIN_EVAC
+#ifdef KELVIN_EVAC
+  log_info(gc)("Planning to evac young words: %zu, old words: %zu", young_words_evacuated, old_words_evacuated);
+#endif
   set_young_words_most_recently_evacuated(young_words_evacuated);
   set_old_words_most_recently_evacuated(old_words_evacuated);
 
   // This memory will be updated in young
   size_t young_live_at_mark = get_young_live_words_after_most_recent_mark();
   size_t young_live_not_in_cset = young_live_at_mark - young_words_evacuated;
+#undef KELVIN_UPDATE
+#ifdef KELVIN_UPDATE
+  log_info(gc)("Planning to update young words: %zu from live_at_mark: %zu minus young_words_evacuated: %zu",
+               young_live_not_in_cset, young_live_at_mark, young_words_evacuated);
+#endif
   set_young_live_words_not_in_most_recent_cset(young_live_not_in_cset);
 
   ShenandoahOldGeneration* old_gen = ShenandoahGenerationalHeap::heap()->old_generation();
@@ -94,12 +103,22 @@ void ShenandoahYoungHeuristics::choose_collection_set_from_regiondata(Shenandoah
     // be coalesced and filled, but it is all going to be "updated". Consider any promotions following most recent
     // old mark to be "live" (now known to be dead, so must be updated). Note that there have not been any promotions
     // yet during this cycle, as we are just beginning to evacuate.
-    size_t old_gen_used = old_gen->used() / HeapWordSize;
-    size_t mixed_candidates_known_garbage = old_gen->unprocessed_collection_candidates_garbage() / HeapWordSize;
-    size_t old_live_in_cset = cset->get_old_bytes_reserved_for_evacuation();
-    size_t old_garbage_in_cset = cset->get_old_garbage();
-    size_t old_live_not_in_cset = old_gen_used - (old_garbage_in_cset + old_live_in_cset + mixed_candidates_known_garbage);
-    set_old_live_words_not_in_most_recent_cset(old_live_not_in_cset);
+    size_t old_gen_used_words = old_gen->used() / HeapWordSize;
+    size_t mixed_candidates_known_garbage_words = old_gen->unprocessed_collection_candidates_garbage() / HeapWordSize;
+    size_t old_live_words_in_cset = cset->get_old_bytes_reserved_for_evacuation() / HeapWordSize;
+    size_t old_garbage_words_in_cset = cset->get_old_garbage() / HeapWordSize;
+    size_t old_live_words_not_in_cset =
+      old_gen_used_words - (old_garbage_words_in_cset + old_live_words_in_cset + mixed_candidates_known_garbage_words);
+#undef KELVIN_UPDATE
+#ifdef KELVIN_UPDATE
+    log_info(gc)("Planning to update old words: %zu from "
+                 "old_gen_used: %zu - (old_garbage_in_cset: %zu + old_live_in_cset: %zu + mixed_candidates_known_garbage: %zu)",
+                 old_live_words_not_in_cset, old_gen_used_words, old_garbage_words_in_cset,
+                 old_live_words_in_cset, mixed_candidates_known_garbage_words);
+#endif
+    set_old_live_words_not_in_most_recent_cset(old_live_words_not_in_cset);
+  } else {
+    set_old_live_words_not_in_most_recent_cset(0);
   }
 
   if (old_gen->has_in_place_promotions()) {
@@ -254,7 +273,16 @@ size_t ShenandoahYoungHeuristics::bytes_of_allocation_runway_before_gc_trigger(s
   // similarly, evac_slack_spiking is MIN2(0, available - avg_cycle_time * rate + penalties + spike_headroom)
   // but evac_slack_spiking is only relevant if is_spiking, as defined below.
 
+#undef KELVIN_AVG_GC
+#ifdef KELVIN_AVG_GC
+  double gc_avg = _gc_cycle_time_history->davg();
+  double gc_dsd = _gc_cycle_time_history->dsd();
+  double avg_cycle_time = gc_avg + (_margin_of_error_sd * gc_dsd);
+  log_info(gc)("SYH::KELVIN avg_cycle_time (%.3f) is avg (%.3f) + (error_margin (%.3f) * dsd (%.3f))",
+               avg_cycle_time, gc_avg, _margin_of_error_sd, gc_dsd);
+#else
   double avg_cycle_time = _gc_cycle_time_history->davg() + (_margin_of_error_sd * _gc_cycle_time_history->dsd());
+#endif
   double avg_alloc_rate = _allocation_rate.upper_bound(_margin_of_error_sd);
   size_t evac_slack_avg;
   if (anticipated_available > avg_cycle_time * avg_alloc_rate + penalties + spike_headroom) {
@@ -296,8 +324,8 @@ double ShenandoahYoungHeuristics::predict_gc_time(size_t mark_words) {
   } else {
     double result = mark_time + evac_time + update_time;
 #ifdef KELVIN_PREDICT
-    log_info(gc)("YH(" PTR_FORMAT ")::predict_gc(%zu): %.3f from mark(): %.3f, evac(%zu, %zu): %.3f, update(%zu): %.3f returns %.3f",
-                 p2i(this), mark_words, result, mark_time, get_anticipated_evac_words(), get_anticipated_pip_words(),
+    log_info(gc)("YH()::predict_gc() from mark(%zu): %.3f, evac(%zu, %zu): %.3f, update(%zu): %.3f returns %.3f",
+                 mark_words, mark_time, get_anticipated_evac_words(), get_anticipated_pip_words(),
                  evac_time, get_anticipated_update_words(), update_time, result);
 #endif
     return result;
@@ -320,31 +348,38 @@ void ShenandoahYoungHeuristics:: update_anticipated_after_completed_gc(size_t ol
                                                                        size_t mixed_candidate_garbage_words)
 {
   if ((mixed_candidate_live_words + promo_potential_words == 0)) {
-    // No need for any reserve in old.  Setting anticipated_mark_words to zero denotes that we use pre-existing linear
-    // predictor for gc-time estimates.
+    // No need for any reserve in old.  Setting anticipated_mark_words to zero denotes that we use alternative simpler linear
+    // or average predictors for gc-time estimates.
 #undef KELVIN_MARK_WORDS
 #ifdef KELVIN_MARK_WORDS
-    log_info(gc)("SYH(" PTR_FORMAT ")::set_anticipated_after_completed_gc() zeros mark_words because mixed: %zu, promo: %zu",
-                 p2i(this), mixed_candidate_live_words, promo_potential_words);
+    log_info(gc)("SYH()::update_anticipated() zeros mark_words because mixed: %zu, promo: %zu",
+                 mixed_candidate_live_words, promo_potential_words);
 #endif
     set_anticipated_mark_words(0);
     return;
   } else {
-    // Assume the memory is available to perform "maximal" GC cycles.  As such, we'll be planning "large" efforts.
-    // If memory supply is constrained, we'll want to trigger early so we can catch up. Triggering early is reinforced
-    // by overestimating how long the GC cycle will take.
+#undef KELVIN_UPDATE_ANTICIPATED
+
+    // Assume memory is available to perform "maximal" GC cycles.  As such, we'll be planning "large" GC efforts.
+    // If memory supply is constrained, we'll want to trigger early so we can catch up. This is reinforced by our
+    // conservative over estimation of required GC time.
     size_t proposed_young_reserve_words = (young_gen->max_capacity() * ShenandoahEvacReserve) / (100 * HeapWordSize);
 
-    // Note that proposed_old_reserve = (size_t) ((proposed_total_reserve * ShenandoahOldEvacPercent) / 100);
-    //           proposed_total_reserve = 100 * proposed_old_reserve / ShenandoahOldEvacPercent
-    //           proposed_total_reserve = proposed_old_reserve + proposed_young_reserve
-    //           proposed_old_reserve + proposed_young_reserve = 100 * proposed_old_reserve / ShenandoahOldEvacPercent
-    //           proposed_old_reserve * (1 - 100 / ShenandoahOldEvacPercent) = - proposed_young_reserve;
-    //           proposed_old_reserve = ((100 / ShenandoahOldEvacPercent) - 1) * proposed_young_reserve
-    //           proposed_old_reserve = proposed_young_reserve / ((100 - ShenandoahOldEvacPercent) / ShenandoahOldEvacPercent)
-    //           proposed_old_reserve = proposed_young_reserve * ShenandoahOldEvacPercent / (100 - ShenandoahOldEvacPercent);
-    size_t proposed_old_reserve_words = proposed_young_reserve_words * ShenandoahOldEvacPercent / (100 - ShenandoahOldEvacPercent);
-    size_t proposed_total_reserve_words = proposed_old_reserve_words + proposed_young_reserve_words;
+    // Define proposed_old_evac in terms of proposed_young_evac
+    //                    proposed_total_evac = proposed_young_evac + proposed_old_evac
+    //                      proposed_old_evac = (proposed_total_evac * ShenandoahOldEvacPercent) / 100
+    //                    proposed_total_evac = (100 * proposed_old_evac) / ShenandoahOldEvacPercent
+    //  proposed_young_evac+proposed_old_evac = (100 * proposed_old_evac) / ShenandoahOldEvacPercent
+    //                      proposed_old_evac = ShenandoahOldEvacPercent * (proposed_young_evac + proposed_old_evac) / 100
+    //   proposed_old_evac *
+    //       (100 - ShenandoahOldEvacPercent) = ShenandoahOldEvacPercent * proposed_young_evac
+    //                      proposed_old_evac = (proposed_young_evac * ShenandoahOldEvacPercent) / (100 - ShenandoahOldEvacPercent)
+    size_t proposed_young_evac_words = (size_t) (proposed_young_reserve_words / ShenandoahEvacWaste);
+    size_t proposed_old_evac_words =
+      (size_t) ((proposed_young_evac_words * ShenandoahOldEvacPercent) / (100 - ShenandoahOldEvacPercent));
+
+    size_t proposed_old_reserve_words = (size_t) (proposed_old_evac_words * ShenandoahOldEvacWaste);
+    size_t proposed_total_reserve_words = proposed_young_reserve_words + proposed_old_reserve_words;
 
     // Anticipate that we will share collector reserves between old and young.  Usually, this allows us to evacuate more
     // old than was "proposed".
@@ -352,10 +387,23 @@ void ShenandoahYoungHeuristics:: update_anticipated_after_completed_gc(size_t ol
     size_t anticipated_young_reserve_words = (size_t) (anticipated_young_evac_words * ShenandoahEvacWaste);
     size_t anticipated_old_reserve_words = proposed_total_reserve_words - anticipated_young_reserve_words;
     size_t anticipated_old_evac_words = (size_t) (anticipated_old_reserve_words / ShenandoahOldEvacWaste);
+    size_t anticipated_total_evac_words = anticipated_young_evac_words + anticipated_old_evac_words;
+
+#ifdef KELVIN_UPDATE_ANTICIPATED
+    log_info(gc)("SYH:update_anticipated() proposes young_evac: %zu, old_evac: %zu, total_evac: %zu",
+                 proposed_young_evac_words, proposed_old_evac_words, proposed_young_evac_words + proposed_old_evac_words);
+    log_info(gc)(" proposed_old_reserve: %zu, proposed_young_reserve: %zu, proposed_total_reserve: %zu",
+                 proposed_old_reserve_words, proposed_young_reserve_words, proposed_total_reserve_words);
+    log_info(gc)(" anticipated_young_evac: %zu, anticipated_old_evac: %zu",
+                 anticipated_young_evac_words, anticipated_old_evac_words);
+#endif
 
     // Remember the total potential mixed candidate live.  We use this to estimate update burden.
-    size_t mixed_candidate_live_potential = mixed_candidate_live_words;
     size_t old_evac_potential_words = promo_potential_words + mixed_candidate_live_words;
+#ifdef KELVIN_UPDATE_ANTICIPATED
+    log_info(gc)("SYH:update_anticipated(), mixed_potential: %zu, promo_potential: %zu, old_evac_potential: %zu",
+                 mixed_candidate_live_words, promo_potential_words, old_evac_potential_words);
+#endif
     if (anticipated_old_evac_words < old_evac_potential_words) {
       size_t old_evac_overflow_words = old_evac_potential_words - anticipated_old_evac_words;
       old_evac_potential_words = anticipated_old_evac_words;
@@ -374,24 +422,52 @@ void ShenandoahYoungHeuristics:: update_anticipated_after_completed_gc(size_t ol
         }
       }
     }
+    // Recompute totals after making adjustments
     anticipated_old_evac_words = promo_potential_words + mixed_candidate_live_words;
+    anticipated_total_evac_words = anticipated_young_evac_words + anticipated_old_evac_words;
+#ifdef KELVIN_UPDATE_ANTICIPATED
+    log_info(gc)("  after adjustments, anticipated_old_evac: %zu, promo_potential: %zu, mixed_candidate_live_words: %zu",
+                 anticipated_old_evac_words, promo_potential_words, mixed_candidate_live_words);
+#endif
+
     size_t anticipated_young_update = get_young_live_words_not_in_most_recent_cset();
     size_t anticipated_old_update;
     if (mixed_candidate_live_words > 0) {
-      anticipated_old_update = old_gen->used() / HeapWordSize - mixed_candidate_live_words;
+      size_t old_used_words = old_gen->used() / HeapWordSize;
+      anticipated_old_update = old_used_words - mixed_candidate_live_words;
+      // Depending on future circumstances beyond our control, the next GC effort may choose a smaller mixed-evac effort
+      // than the one we are anticipating.  With a smaller mixed-evac effort, the old update effort will be larger than
+      // anticipated by these predictions.  This would be compensated by a comparable decrease in the old evacuation effort.
+      // In general, we expect the savings realized by reduced evacuation to exceed the excesses in update costs, so this
+      // behavior is conservative.
+#ifdef KELVIN_UPDATE_ANTICIPATED
+      log_info(gc)(" For mixed evac, anticipating young_update: %zu,  old_update: %zu, from old_used: %zu - mixed_evac: %zu",
+                   anticipated_young_update, anticipated_old_update, old_used_words, mixed_candidate_live_words);
+#endif
     } else {
       anticipated_old_update = get_remset_words_in_most_recent_mark_scan();
+#ifdef KELVIN_UPDATE_ANTICIPATED
+      log_info(gc)(" For traditional evac, anticipating young_update: %zu, old_update_words: %zu, from most recent remset words",
+                   anticipated_young_update, anticipated_old_update);
+#endif
     }
 
-#ifdef KELVIN_MARK_WORDS
-    log_info(gc)("SYH(" PTR_FORMAT ")::set_anticipated_after_completed_gc() non-zero mark_words because mixed: %zu, promo: %zu",
-                 p2i(this), mixed_candidate_live_words, promo_potential_words);
+    // This significantly under estimates the effort required for GLOBAL marking, but heuristics don't decide when to start
+    // global marking.  That is reactive, in response to System.gc() or certain meta-space conditions.
+    // This slightly under estimates the effort required for Bootstrap marking.  We don't know at the time we pre-compute
+    // these anticipated values that the next GC will be bootstrap. Expect that we will adjust our GC time predictions at the
+    // start of a bootstrap cycle, and will surge workers at that time if necessary.
+    size_t anticipated_mark_words = get_young_live_words_after_most_recent_mark();
+#ifdef KELVIN_UPDATE_ANTICIPATED
+  log_info(gc)("  anticipated_mark_words: %zu", anticipated_mark_words);
 #endif
+
     // We'll assume all promotion is by evacuation.  If we find out following mark that some of the promotion will be
-    // in place, we will adjust anticipation there.
+    // in place, we will adjust anticipation there.  Assuming all promotion is by evacuation yields more conservative
+    // approximation of GC time.
     set_anticipated_pip_words(0);
-    set_anticipated_mark_words(get_young_live_words_after_most_recent_mark());
-    set_anticipated_evac_words(anticipated_young_evac_words + anticipated_old_evac_words);
+    set_anticipated_mark_words(anticipated_mark_words);
+    set_anticipated_evac_words(anticipated_total_evac_words);
     set_anticipated_update_words(anticipated_old_update + anticipated_young_update);
   }
 }

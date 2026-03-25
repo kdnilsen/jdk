@@ -90,6 +90,14 @@ private:
   double _most_recent_trigger_evaluation_time;
   double _most_recent_planned_sleep_interval;
 
+  static const uint8_t GC_Is_Abbreviated         = 0x01;
+  static const uint8_t GC_Is_Mixed               = 0x02;
+  static const uint8_t GC_Has_Promo              = 0x04;
+  static const uint8_t GC_Is_Generational_Global = 0x08;
+  static const uint8_t GC_Has_Promote_In_Place   = 0x10;
+
+  uint8_t _gc_cycle_is_atypical;
+
 protected:
   static const uint Moving_Average_Samples = 10; // Number of samples to store in moving averages
 
@@ -228,6 +236,50 @@ protected:
     return _most_recent_planned_sleep_interval;
   }
 
+  inline void assume_gc_cycle_is_typical() {
+    _gc_cycle_is_atypical = 0;
+  }
+
+  // A typical gc cycle is defined as one that has no promotions and no mixed evacuations and is not abbreviated.
+  // The time required for an atypical gc cycle is computed from phase-accounting model rather than from average cycle time.
+  inline bool is_gc_cycle_typical() {
+    return !_gc_cycle_is_atypical;
+  }
+
+  inline bool is_gc_cycle_abbreviated() {
+    return _gc_cycle_is_atypical & GC_Is_Abbreviated;
+  }
+
+  inline uint8_t gc_typical_encoding() {
+    return _gc_cycle_is_atypical;
+  }
+
+  inline void gc_cycle_is_abbreviated() {
+    _gc_cycle_is_atypical |= GC_Is_Abbreviated;
+  }
+
+  inline void gc_cycle_has_old() {
+    _gc_cycle_is_atypical |= GC_Is_Mixed;
+  }
+
+  virtual double margin_of_error_sd() const {
+    return ShenandoahAdaptiveInitialConfidence;
+  }
+
+  // If we have reserved for anticipated promotion more than 10% of planned young evacuation load, treat this as an
+  // atypical GC cycle due to the promotion workload.
+  inline void gc_cycle_has_significant_promotion() {
+    _gc_cycle_is_atypical |= GC_Has_Promo;
+  }
+
+  inline void gc_cycle_is_generational_global() {
+    _gc_cycle_is_atypical |= GC_Is_Generational_Global;
+  }
+
+  inline void gc_cycle_has_promote_in_place() {
+    _gc_cycle_is_atypical |= GC_Has_Promote_In_Place;;
+  }
+
 public:
   ShenandoahHeuristics(ShenandoahSpaceInfo* space_info);
   virtual ~ShenandoahHeuristics();
@@ -264,9 +316,9 @@ public:
 
   virtual bool should_degenerate_cycle();
 
-  virtual void record_success_concurrent(bool is_abbreviated, bool is_mixed);
+  virtual void record_success_concurrent();
 
-  virtual void record_degenerated(bool is_abbreviated, bool is_mixed);
+  virtual void record_degenerated();
 
   virtual void record_success_full();
 

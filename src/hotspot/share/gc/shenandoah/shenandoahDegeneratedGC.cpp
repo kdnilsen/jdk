@@ -313,13 +313,13 @@ void ShenandoahDegenGC::op_degenerated() {
   policy->record_degenerated(_generation->is_young(), _abbreviated, progress);
   if (progress) {
     heap->notify_gc_progress();
-    _generation->heuristics()->record_degenerated(abbreviated(), mixed());
+    _generation->heuristics()->record_degenerated();
     heap->start_idle_span();
   } else if (policy->should_upgrade_degenerated_gc()) {
     // Upgrade to full GC, register full-GC impact on heuristics.
     op_degenerated_futile();
   } else {
-    _generation->heuristics()->record_degenerated(abbreviated(), mixed());
+    _generation->heuristics()->record_degenerated();
   }
 }
 
@@ -428,6 +428,10 @@ void ShenandoahDegenGC::op_update_roots() {
     Universe::verify();
   }
 
+#undef KELVIN_REBUILD
+#ifdef KELVIN_REBUILD
+  log_info(gc)("rebuild_free_set() called from ShenDegenGC::op_update_roots()");
+#endif
   heap->rebuild_free_set(false /*concurrent*/);
 }
 

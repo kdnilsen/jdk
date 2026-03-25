@@ -80,8 +80,9 @@ void ShenandoahGenerationalHeuristics::choose_collection_set(ShenandoahCollectio
 
   _add_regions_to_old = 0;
 
-  // Seed the collection set with resource area-allocated
-  // preselected regions, which are removed when we exit this scope.
+  assume_gc_cycle_is_typical();
+
+  // Seed the collection set with resource area-allocated preselected regions, which are removed when we exit this scope.
   ShenandoahCollectionSetPreselector preselector(collection_set, heap->num_regions());
 
   // Find the amount that will be promoted, regions that will be promoted in
@@ -387,6 +388,19 @@ void ShenandoahGenerationalHeuristics::filter_regions(ShenandoahCollectionSet* c
 
   if (collection_set->has_old_regions()) {
     heap->shenandoah_policy()->record_mixed_cycle();
+  }
+
+  if (10 * collection_set->get_live_bytes_in_tenurable_regions() > collection_set->get_live_bytes_in_untenurable_regions()) {
+    gc_cycle_has_significant_promotion();
+  }
+  if (collection_set->has_old_regions()) {
+    gc_cycle_has_old();
+  }
+  if (immediate_garbage == total_garbage) {
+    gc_cycle_is_abbreviated();
+  }
+  if (doing_promote_in_place) {
+    gc_cycle_has_promote_in_place();
   }
 
   collection_set->summarize(total_garbage, immediate_garbage, immediate_regions);
