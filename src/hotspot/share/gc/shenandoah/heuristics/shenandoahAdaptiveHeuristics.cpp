@@ -386,7 +386,7 @@ void ShenandoahAdaptiveHeuristics::record_cycle_start() {
 void ShenandoahAdaptiveHeuristics::record_success_concurrent() {
   ShenandoahHeuristics::record_success_concurrent();
   double cycle_time = elapsed_cycle_time();
-  if (is_gc_cycle_typical() || (predict_gc_time(_cycle_start) > cycle_time)) {
+  if (is_gc_cycle_typical() || (!is_gc_cycle_abbreviated() && (predict_gc_time(_cycle_start) > cycle_time))) {
     // Generally, we expect atypical cycles to take longer than the typical cycles.  But we'll add atypical times into
     // the lineaer prediction model if they help lower the standard deviation and/or slope of the prediction line.
     add_gc_time(_cycle_start, elapsed_cycle_time());

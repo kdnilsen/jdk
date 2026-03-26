@@ -251,7 +251,8 @@ void ShenandoahHeuristics::log_trigger(const char* fmt, ...) {
 void ShenandoahHeuristics::record_success_concurrent() {
   double cycle_time = elapsed_cycle_time();
   if (is_gc_cycle_typical() ||
-      (cycle_time < _gc_cycle_time_history->davg() + (margin_of_error_sd() * _gc_cycle_time_history->dsd()))) {
+      (!is_gc_cycle_abbreviated() &&
+       (cycle_time < _gc_cycle_time_history->davg() + (margin_of_error_sd() * _gc_cycle_time_history->dsd())))) {
     // Generally, we expect atypical cycles to take longer than the typical cycles.  But we'll add atypical times into
     // average if they help lower the standard deviation and/or running average.
     _gc_cycle_time_history->add(cycle_time);
