@@ -270,7 +270,7 @@ protected:
   // Promotion is considered signficant if it represents an increase of more than 10% over the normal young
   // evacuation workload.
   inline static bool is_promotion_significant(size_t anticipated_promotion, size_t anticipated_young_evac_non_promotion) {
-    return (10 * anticipated_promotion > anticipated_young_evac_non_promotion)?
+    return (10 * anticipated_promotion > anticipated_young_evac_non_promotion);
   }
 
   // If we have reserved for anticipated promotion more than 10% of planned young evacuation load, treat this as an
@@ -363,22 +363,22 @@ public:
     return _words_most_recently_evacuated;
   }
 
-  virtual void record_mark_end(double now, size_t marked_words) = 0;
-  virtual void record_evac_end(double now, size_t evacuated_words, size_t pip_words) = 0;
-  virtual void record_update_end(double now, size_t updated_words) = 0;
-  virtual void record_final_roots_end(double now, size_t pip_words) = 0;
-  virtual double predict_mark_time(size_t anticipated_marked_words) = 0;
+  virtual void record_mark_end(double now, size_t marked_words) {}
+  virtual void record_evac_end(double now, size_t evacuated_words, size_t pip_words) {}
+  virtual void record_update_end(double now, size_t updated_words) {}
+  virtual void record_final_roots_end(double now, size_t pip_words) {}
+  virtual double predict_mark_time(size_t anticipated_marked_words) { return 0.0; }
 
   // For satb mode, anticipate_pip_words is zero
-  virtual double predict_evac_time(size_t anticipated_evac_words, size_t anticipated_pip_words) = 0;
-  virtual double predict_update_time(size_t anticipated_update_words) = 0;
+  virtual double predict_evac_time(size_t anticipated_evac_words, size_t anticipated_pip_words) { return 0.0; }
+  virtual double predict_update_time(size_t anticipated_update_words) { return 0.0; }
 
   // In non-generational mode, supply pip_words as zero
-  virtual double predict_final_roots_time(size_t pip_words) = 0;
+  virtual double predict_final_roots_time(size_t pip_words) { return 0.0; }
 
   // Predict gc time using conservative approximations of anticipated mark, evac, and update words.  Returns 0.0 if there
   // is not enough history to make a prediction.
-  virtual double predict_gc_time(size_t mark_words) = 0;
+  virtual double predict_gc_time(size_t mark_words) { return 0.0; }
 
   virtual const char* name() = 0;
   virtual bool is_diagnostic() = 0;

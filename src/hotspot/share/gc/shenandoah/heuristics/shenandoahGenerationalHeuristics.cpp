@@ -316,8 +316,8 @@ void ShenandoahGenerationalHeuristics::filter_regions(ShenandoahCollectionSet* c
     }
   }
 
-  if (ShenandoahHeuristics::is_promotino_signicant(collection_set->get_live_bytes_in_tenurable_regions(),
-                                                   collection_set->get_live_bytes_in_untenurable_regions())) {
+  if (ShenandoahHeuristics::is_promotion_significant(collection_set->get_live_bytes_in_tenurable_regions(),
+                                                     collection_set->get_live_bytes_in_untenurable_regions())) {
     gc_cycle_has_significant_promotion();
   }
   if (collection_set->has_old_regions()) {
