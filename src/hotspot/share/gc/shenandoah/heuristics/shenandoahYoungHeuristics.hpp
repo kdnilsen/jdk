@@ -36,12 +36,12 @@ class ShenandoahYoungGeneration;
 class ShenandoahYoungHeuristics : public ShenandoahGenerationalHeuristics {
 protected:
   // For the most recently completed GC (global, young, old), how many live words from the young generation were not included
-  // in the collection set at time collection set was built.  This represents the amount of young memory that will need to be 
+  // in the collection set at time collection set was built.  This represents the amount of young memory that will need to be
   // updated.
   size_t _young_live_words_not_in_most_recent_cset;
 
   // For the most recently completed GC (global, young, old), how many live words from the old generation were not included
-  // in the collection set at time collection set was built.  This represents the amount of old memory that will need to be 
+  // in the collection set at time collection set was built.  This represents the amount of old memory that will need to be
   // updated if the cset includes old regions.
   size_t _old_live_words_not_in_most_recent_cset;
 
@@ -58,7 +58,7 @@ protected:
   size_t _old_words_most_recently_evacuated;
 
   // How many words did we intend to promote from young by evacuation in the most recent young evacuation?
-  size_t _words_most_recently_promoted;  
+  size_t _words_most_recently_promoted;
 
   // How many regions were promoted in place during most recent young GC?
   size_t _regions_most_recently_promoted_in_place;

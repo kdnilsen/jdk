@@ -73,7 +73,7 @@ private:
 
   // Represents the quantity of live bytes we may promote in place during the next GC cycle.  This value
   // feeds into the young heuristic's triggering decision.  Note that some regions identified for subsequent
-  // promotion in place may ultimately be promoted by evacuation.  This will happen if the amount of garbage 
+  // promotion in place may ultimately be promoted by evacuation.  This will happen if the amount of garbage
   // within the region grows to exceed ShenandoahOldGarbageThreshold before the next evacuation cycle begins.
   size_t _pip_potential;
 
@@ -157,7 +157,7 @@ public:
   size_t get_promotion_potential() const   { return _promotion_potential; }
 
   // See description in field declaration
-  void set_pip_potential(size_t val)       { _pip_potential = val; }; 
+  void set_pip_potential(size_t val)       { _pip_potential = val; };
   size_t get_pip_potential() const         { return _pip_potential; };
 
   // See description in field declaration
@@ -177,7 +177,7 @@ public:
   void set_expected_in_place_promotable_regular_region_live_data_words(size_t words) {
     _in_place_promotable_regular_region_live_data = words;
   }
-  size_t get_expected_in_place_promotions() const { 
+  size_t get_expected_in_place_promotions() const {
     return _in_place_promotable_humongous_regions + _in_place_promotable_regular_regions;
   }
   size_t get_expected_in_place_promotable_live_words() {
@@ -294,7 +294,7 @@ public:
   size_t unprocessed_collection_candidates_live_memory();
 
   // Amount of garbage (bytes) in regions waiting for mixed collection
-  size_t unprocessed_collection_candidates_garbage(); 
+  size_t unprocessed_collection_candidates_garbage();
 
   // Abandon any regions waiting for mixed collections
   void abandon_collection_candidates();
@@ -343,7 +343,7 @@ public:
 
   void transition_to(State new_state);
 
-  size_t get_used_bytes_at_start_of_mark() const { 
+  size_t get_used_bytes_at_start_of_mark() const {
     return _used_bytes_at_start_of_mark;
   }
 

@@ -283,7 +283,7 @@ size_t ShenandoahScanRemembered::process_clusters(size_t first_cluster, size_t c
           last_obj->oop_iterate(cl, last_mr);
           log_develop_debug(gc, remset)("Fixed up non-objArray suffix scan in [" INTPTR_FORMAT ", " INTPTR_FORMAT ")",
                                         p2i(last_mr.start()), p2i(last_mr.end()));
-	  examined_words += (p - right);
+          examined_words += (p - right);
         } else {
           log_develop_debug(gc, remset)("Skipped suffix scan of objArray in [" INTPTR_FORMAT ", " INTPTR_FORMAT ")",
                                         p2i(right), p2i(p));

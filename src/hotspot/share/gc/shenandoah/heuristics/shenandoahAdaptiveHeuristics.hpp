@@ -361,7 +361,7 @@ protected:
   // detect when GC needs to trigger.
   void compute_headroom_adjustment() override;
 
-  // Add a normal (young or bootstrap) GC time to the GC time history.  
+  // Add a normal (young or bootstrap) GC time to the GC time history.
   void add_gc_time(double timestamp_at_start, double duration);
 
   // Add a degenerated (young or bootstrap) GC time to the GC time history.

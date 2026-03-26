@@ -204,7 +204,7 @@ public:
   size_t unprocessed_old_collection_candidates_garbage() const;
 
   void set_unprocessed_old_collection_candidates_garbage(size_t initial_garbage);
-		
+
   void decrease_unprocessed_old_collection_candidates_garbage(size_t reclaimed_garbage);
 
   // How many old or hidden collection candidates have not yet been processed?

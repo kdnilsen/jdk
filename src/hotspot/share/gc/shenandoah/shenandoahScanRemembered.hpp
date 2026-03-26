@@ -856,7 +856,7 @@ public:
 
   // process_humongous_clusters() scans a portion of the remembered set that corresponds to humongous regions,
   // similar to process_clusters().  It also returns the number of words examined for purposes of calibrating
-  // phase accounting. 
+  // phase accounting.
   template <typename ClosureType>
   size_t process_humongous_clusters(ShenandoahHeapRegion* r, size_t first_cluster, size_t count,
                                     HeapWord* end_of_range, ClosureType* oops, bool use_write_table);
