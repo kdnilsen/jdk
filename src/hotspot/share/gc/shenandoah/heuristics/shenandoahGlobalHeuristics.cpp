@@ -236,7 +236,8 @@ void ShenandoahGlobalHeuristics::choose_global_collection_set(ShenandoahCollecti
     gc_cycle_has_old();
   }
 
-  if (10 * cset->get_live_bytes_in_tenurable_regions() > cset->get_live_bytes_in_untenurable_regions()) {
+  if (ShenandoahHeuristics::is_promotion_significant(cset->get_live_bytes_in_tenurable_regions(),
+                                                     cset->get_live_bytes_in_untenurable_regions())) {
     gc_cycle_has_significant_promotion();
   }
 

@@ -291,8 +291,8 @@ double ShenandoahAdaptiveHeuristics::predict_gc_time(size_t mark_words) {
   }
 }
 
-// Marking effort is assumed to be a function of "time".  During steady state, marking efforts should be constant.  During
-// initialization, marking may increase linearly as data is retained for promotion.
+// Marking effort is assumed to be a function of how many words are marked.  During steady state, marking efforts should be
+// constant.  During initialization, marking may increase linearly as data is retained for promotion.
 void ShenandoahAdaptiveHeuristics::record_mark_end(double now, size_t marked_words) {
   // mark will be followed by evac or final_roots, we're not sure which
   _phase_stats[ShenandoahMajorGCPhase::_evac].set_most_recent_start_time(now);
@@ -303,7 +303,7 @@ void ShenandoahAdaptiveHeuristics::record_mark_end(double now, size_t marked_wor
 }
 
 // Evacuation effort is assumed to be a function of words evacuated or promoted in place.  In non-generational mode,
-// use promoted_in_place_words equal zero.
+// promoted_in_place_words equals zero.
 void ShenandoahAdaptiveHeuristics::record_evac_end(double now, size_t evacuated_words, size_t promoted_in_place_words) {
   // evac will be followed by update
   _phase_stats[ShenandoahMajorGCPhase::_update].set_most_recent_start_time(now);
@@ -311,7 +311,8 @@ void ShenandoahAdaptiveHeuristics::record_evac_end(double now, size_t evacuated_
   double duration = now - start_phase_time;
   // Evacuation time is a linear function of both evacuated_words and promoted_in_place_words.  Analysis of selected
   // (not exhaustive) experiments shows that the proportionality constant for evacuated_words is 5 times larger than
-  // the proportionality constant for promoted_in_place_words.  This was determined by first analyzing multiple results
+  // the proportionality constant for promoted_in_place_words.  In other words, it is approximately 5 times more
+  // costly to evacuate than to promote in place.  yThis was determined by first analyzing multiple results
   // for which promoted_in_place_words equals zero to first determine the proportionality constant for evacuated_words,
   // and then feeding that result into the analysis of proportionality constant for promoted_in_place_words.  Our current
   // thoughts are that analyzing two-dimensional linear equations in real time is not practical.  Instead, we convert this
@@ -320,16 +321,15 @@ void ShenandoahAdaptiveHeuristics::record_evac_end(double now, size_t evacuated_
 }
 
 // Update effort is assumed to be a function of live words updated.  For young collection, this is number of live words
-// in young at start of evac that are not residing within the cset.  This does not include the old-gen words that are
-// updated from remset.  That component is assumed to remain approximately constant and negligible, and will be accounted
-// in the y-intercept.  For mixed collections, this is the number of live words in young and old at start of evac (excluding cset).
+// in young at start of evac that are not residing within the cset plus the remembered set words that reside in the  old
+// generation. For mixed collections, this is the number of live words in young and old at start of evac (excluding cset).
 void ShenandoahAdaptiveHeuristics::record_update_end(double now, size_t updated_words) {
   double start_phase_time = _phase_stats[ShenandoahMajorGCPhase::_update].get_most_recent_start_time();
   double duration = now - start_phase_time;
   record_phase_duration(ShenandoahMajorGCPhase::_update, (double) updated_words, duration);
 }
 
-// Final roots is assumed to be a function of pip_words.  For non-generational mode, use zero.
+// Final roots is assumed to be a function of pip_words.  For non-generational mode, promoted_in_place_words is zero.
 void ShenandoahAdaptiveHeuristics::record_final_roots_end(double now, size_t promoted_in_place_words) {
   double start_phase_time = _phase_stats[ShenandoahMajorGCPhase::_final_roots].get_most_recent_start_time();
   double duration = now - start_phase_time;
@@ -352,10 +352,22 @@ double ShenandoahAdaptiveHeuristics::predict_final_roots_time(size_t pip_words) 
   return _phase_stats[ShenandoahMajorGCPhase::_final_roots].predict_at((double) 0.0);
 }
 
+// This is the common entry for using predicting gc time by prediction model rather than as historical average.
+// There are two prediction models:
+//  1. the linear prediction model applies to "typical" GC cycles and is based on a theory that gc times may be
+//     increasing linearly (due to an increase in live memory)
+// 2. the phase-accounting model applies to "atypical" GC cycles (e.g. generational global, abbreviated, mixed)
+//    and relies upon having anticipated values for words to be marked, words to be evacuated, words to be promoted
+//    in place, and words to be updated.
+// If anticipated values are not available, the phase-accounting model returns 0.0 and this function relies upon
+// its linear prediction model.  When we recognize that an upcoming GC cycle is anticipated to be "typical", we set
+// anticipated mark words to zero in order to disable the phase-accounting model in order to force the linear prediction
+// model.
 double ShenandoahAdaptiveHeuristics::predict_gc_time(double timestamp_at_start) {
   size_t mark_words = get_anticipated_mark_words();
   double result;
   if ((mark_words == 0) || ((result = predict_gc_time(mark_words)) == 0.0)) {
+    // Return the linear prediction result.
     result =_gc_time_m * timestamp_at_start + _gc_time_b + _gc_time_sd * _margin_of_error_sd;
   }
   return result;
@@ -1009,38 +1021,8 @@ ShenandoahPhaseTimeEstimator::ShenandoahPhaseTimeEstimator(const char* name) :
 // The x_value represents an input parameter for the size of the phase's work.  For example, the evacuation phase is
 // parameterized by the amount of memory that we expect to evacuate.  The y-value is the time required to execute the phase.
 //
-// The samples are calibrated under the assumption that workers are not surged.  In theory, we should be able to add
-// phase-time samples for phases that have experienced worker surge, adjusting the duration by the magnitude of the
-// surge.  For example, if we surged with 2x the number of normal workers, then we could record that the normal time
-// (without the worker surge) to execute this phase would have been 2x the time it took with the 2x worker surge.  We
-// have found this does not work.  It gets us into a death spiral.  In particular, this causes the triggering heuristic
-// to "believe" it will take too long to execute the phase, so it triggers early, but usually not early enough to safely
-// handle the anticipated long duration of the phase (because there is simply not enough allocation runway to handle that
-// very long anticipated duration even when we trigger back to back).  Then the surge heuristics observes the situation and
-// decides we have to surge with even more workers in order to handle the situation we are in.  Then at the end of the
-// phase, we record the result of executing the phase with the 2.25x as taking 2.25x as long without the surge.  It gets
-// worse and worse until we are stuck in maximum surge of 3x.  Meanwhile, the service is deprived of CPU attention
-// because almost all the cores (75%) are fully consumed by out-of-control GC worker surge.  So whenever they get CPU
-// time, the service threads are very hungry to allocate memory in order to catch up with pending work.
-//
-// We also experimented with scaling measured surge execution times to lower values.  For example, if surge was 2x, we
-// tried scaling the measured execution time to 1.5x.  This also resulted in the death spiral behavior, albeit at a slightly
-// slower pace.  Several considerations have motivated us to abandon the pursuit of the "perfect" scale factor:
-//
-//  1. If we accidentally undershoot the right scale value, we will end up with an overly optimistic scheduling heuristic.
-//     We will trigger too late for normal operation, and the surge trigger will not kick in because it will not recognize
-//     that we scheduled too late.
-//
-//  2. We expect that the "perfect" scale factor will differ for each surge percentage.  Typical experience is diminishing
-//     returns for each new concurrent processor thrown at a shared job due to increased contention for shared resources and
-//     locking mechanisms.
-//
-//  3. We expect that the scalability of different phases will be different.  Marking, for example, is especially difficulit
-//     to scale, because typical workloads have mostly small objects, and the current implementation requires synchronization
-//     between workers for each object that we mark through, and for each object added to the shared scan queue.  On the other
-//     hand, evacuation and updating is much more easily performed by many cores.
-//
-// Our current approach to this problem is to only add samples that result from measurement of "unsurged execution phases".
+// The samples are calibrated under the assumption that workers are not surged.  Our current approach is to
+//  only add samples that result from measurement of "unsurged execution phases".
 
 void ShenandoahPhaseTimeEstimator::add_sample(double x_value, double y_value) {
   if (_num_samples >= MaxSamples) {

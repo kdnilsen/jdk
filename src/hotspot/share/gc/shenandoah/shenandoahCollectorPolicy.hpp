@@ -74,6 +74,11 @@ public:
   void record_success_old();
   void record_interrupted_old();
 
+  // A collection cycle may be "abbreviated" if Shenandoah finds a sufficient percentage
+  // of regions that contain no live objects (ShenandoahImmediateThreshold). These cycles
+  // end after final mark, skipping the evacuation and reference-updating phases. Such
+  // cycles are very efficient and are worth tracking. Note that both degenerated and
+  // concurrent cycles can be abbreviated.
   void record_success_concurrent(bool is_young, bool is_abbreviated);
 
   // Record that a degenerated cycle has been completed. Note that such a cycle may or

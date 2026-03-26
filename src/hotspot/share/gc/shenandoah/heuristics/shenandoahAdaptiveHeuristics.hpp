@@ -294,12 +294,13 @@ protected:
   // How many total words were evacuated in the most recently completed GC?
   size_t _words_most_recently_evacuated;
 
-  // How many words do we expect to mark in the next GC?
-  // (aka how many words did we evacuate from most recently completed GC?)
+  // How many words do we expect to mark in the next GC?  Setting this value to zero effectively disables phase-account
+  // model prediction of GC time fot he next GC cycle.
   size_t _anticipated_mark_words;
 
-  // How many words do we expect to evacuate in the next GC?
-  // (aka how many words did we evacuate from most recently completed GC?)
+  // How many words do we expect to evacuate in the next GC?  For an anticipated young GC, this is the same as what was
+  // evacuated in the previous GC cycle.  For an anticipated mixed-evac GC, this includes the anticipated mixed-evac
+  // workload.
   size_t _anticipated_evac_words;
 
   // How many words do we expect to update in the next GC?

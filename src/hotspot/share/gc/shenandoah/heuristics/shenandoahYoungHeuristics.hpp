@@ -151,7 +151,8 @@ public:
 
   double predict_gc_time(size_t anticipated_mark_words) override;
 
-  // Setting this value to zero denotes current GC cycle to be "traditional young", so average GC cycle tine is best predictor.
+  // Setting this value to zero denotes current GC cycle to be "traditional young", so average GC cycle tine or linear
+  // prediction are preferred over phase-account prediction.
   inline void set_anticipated_mark_words(size_t words) {
     _anticipated_mark_words = words;
   }
