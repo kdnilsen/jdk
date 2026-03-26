@@ -146,8 +146,8 @@ public:
     return _live_words_most_recently_promoted_in_place;
   }
 
-  double predict_evac_time(size_t anticipated_evac_words, size_t anticipated_pip_words);
-  double predict_final_roots_time(size_t anticipated_pip_words);
+  double predict_evac_time(size_t anticipated_evac_words, size_t anticipated_pip_words) override;
+  double predict_final_roots_time(size_t anticipated_pip_words) override;
 
   double predict_gc_time(size_t anticipated_mark_words) override;
 
