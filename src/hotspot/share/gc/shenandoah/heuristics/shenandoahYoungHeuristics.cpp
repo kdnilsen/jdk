@@ -357,6 +357,22 @@ void ShenandoahYoungHeuristics:: update_anticipated_after_completed_gc(size_t ol
     // start of a bootstrap cycle, and will surge workers at that time if necessary.
     size_t anticipated_mark_words = get_young_live_words_after_most_recent_mark();
 
+    if (ShenandoahAllowOldMarkingPreemption || !next_cycle_is_bootstrap()) {
+      // This is the normal mode of operation.
+
+      // Words which recently became old due to promote-in-place, mixed-evacuation, or promotion by evacuation are
+      // conservatively flagged as dirty within the remembered set. The extra work required to clean this data during
+      // marking may result in much larger than normal times to scan the remembered set (e.g 714 ms vs 30 ms)
+      anticipated_mark_words = get_normal_young_mark_words() + get_recently_old_words();
+
+    } else {
+      // All Bootstrap GC cycles are Global cycles
+
+
+    }
+
+
+
     // We'll assume all promotion is by evacuation.  If we find out following mark that some of the promotion will be
     // in place, we will adjust anticipation there.  Assuming all promotion is by evacuation yields more conservative
     // approximation of GC time.

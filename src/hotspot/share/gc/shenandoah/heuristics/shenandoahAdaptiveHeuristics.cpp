@@ -341,6 +341,9 @@ double ShenandoahAdaptiveHeuristics::predict_mark_time(size_t anticipated_marked
 }
 
 double ShenandoahAdaptiveHeuristics::predict_evac_time(size_t anticipated_evac_words, size_t anticipated_pip_words) {
+  // The non-generational version of predict_evac_time() assumes no dependency on anticipated_pip_words,
+  // which should always equal zero.
+  assert(anticipate_pip_words == 0, "Non-generational mode has no promote in place");
   return _phase_stats[ShenandoahMajorGCPhase::_evac].predict_at((double) (5 * anticipated_evac_words));
 }
 
@@ -349,6 +352,8 @@ double ShenandoahAdaptiveHeuristics::predict_update_time(size_t anticipated_upda
 }
 
 double ShenandoahAdaptiveHeuristics::predict_final_roots_time(size_t pip_words) {
+  // The non-generational version of predict_final_roots_time() assumes constant time, since pip_words is always zero.
+  assert(pip_words == 0, "Non-generational mode has no promote in place");
   return _phase_stats[ShenandoahMajorGCPhase::_final_roots].predict_at((double) 0.0);
 }
 
