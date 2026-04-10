@@ -241,22 +241,33 @@ void ShenandoahAdaptiveHeuristics::add_gc_time(double timestamp, double gc_time)
     _gc_time_first_sample_index = (_gc_time_first_sample_index + 1) % GC_TIME_SAMPLE_SIZE;
   }
 
-  double delta_x;
   if (_gc_time_num_samples == 1) {
     // The predictor is constant (horizontal line)
     _gc_time_m = 0;
     _gc_time_b = gc_time;
     _gc_time_sd = 0.0;
-  } else if ((_gc_time_num_samples == 2) && ((delta_x = timestamp - _gc_time_timestamps[_gc_time_first_sample_index]) != 0.0)) {
-    // Two points define a line
-    double delta_y = gc_time - _gc_time_samples[_gc_time_first_sample_index];
-    _gc_time_m = delta_y / delta_x;
-
-    // y = mx + b
-    // so b = y0 - mx0
-    _gc_time_b = gc_time - _gc_time_m * timestamp;
-    _gc_time_sd = 0.0;
-  } else if (_gc_time_num_samples > 2) {
+  } else if (_gc_time_num_samples == 2) {
+    double delta_x = timestamp - _gc_time_timestamps[_gc_time_first_sample_index];
+    if  (delta_x != 0.0) {
+      // Two points define a line
+      double delta_y = gc_time - _gc_time_samples[_gc_time_first_sample_index];
+      _gc_time_m = delta_y / delta_x;
+      // y = mx + b
+      // so b = y0 - mx0
+      _gc_time_b = gc_time - _gc_time_m * timestamp;
+      _gc_time_sd = 0.0;
+    } else {
+      // Avoid divide by zero. Predict with a horizontal line at the average value.
+      _gc_time_m = 0;
+      uint first_index = _gc_time_first_sample_index;
+      uint second_index = index;
+      assert(second_index == (first_index + 1) % GC_TIME_SAMPLE_SIZE, "don't break this invariant");
+      _gc_time_b = (_gc_time_samples[first_index] + _gc_time_samples[second_index]) / 2;
+      double deviation = _gc_time_samples[first_index] - _gc_time_b;
+      double sum_of_square_deviations = 2 * deviation * deviation;
+      _gc_time_sd = sqrt(sum_of_square_deviations / 2);
+    }
+  } else {
     _gc_time_m = ((_gc_time_num_samples * _gc_time_sum_of_xy - _gc_time_sum_of_timestamps * _gc_time_sum_of_samples) /
                   (_gc_time_num_samples * _gc_time_sum_of_xx - _gc_time_sum_of_timestamps * _gc_time_sum_of_timestamps));
     _gc_time_b = (_gc_time_sum_of_samples - _gc_time_m * _gc_time_sum_of_timestamps) / _gc_time_num_samples;
