@@ -263,6 +263,8 @@ void ShenandoahAdaptiveHeuristics::add_gc_time(double time_at_start, double gc_t
   } else {
     // Since timestamps are monotonically increasing, denominator does not equal zero.
     double denominator = _gc_time_num_samples * _gc_time_sum_of_xx - _gc_time_sum_of_timestamps * _gc_time_sum_of_timestamps;
+    assert(denominator != 0.0, "Invariant: samples: %u, sum_of_xx: %.6f, sum_of_timestamps: %.6f",
+           _gc_time_num_samples, _gc_time_sum_of_xx, _gc_time_sum_of_timestamps);
     _gc_time_m = ((_gc_time_num_samples * _gc_time_sum_of_xy - _gc_time_sum_of_timestamps * _gc_time_sum_of_samples) /
                   denominator);
     _gc_time_b = (_gc_time_sum_of_samples - _gc_time_m * _gc_time_sum_of_timestamps) / _gc_time_num_samples;
