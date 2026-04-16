@@ -411,14 +411,13 @@ template oop ShenandoahGenerationalHeap::try_evacuate_object<YOUNG_GENERATION, O
 template oop ShenandoahGenerationalHeap::try_evacuate_object<OLD_GENERATION, OLD_GENERATION>(oop p, Thread* thread, uint from_region_age);
 
 // Call this function at the end of a GC cycle in order to establish proper sizes of young and old reserves,
-// setting the old-generation balance so that we can
+// setting the old-generation balance so that GC can perform the anticipated evacuations.
 //
 // Make sure old-generation is large enough, but no larger than is necessary, to hold mixed evacuations
 // and promotions, if we anticipate either. Any deficit is provided by the young generation, subject to
 // mutator_xfer_limit, and any surplus is transferred to the young generation.  mutator_xfer_limit is
-// the maximum we're able to transfer from young to old.  This is called at the end of GC, as we prepare
-// for the idle span that precedes the next GC.  The mutator_xfer_limit constrains the transfer of memory
-// from young to old.  It does not limit young reserves.
+// the maximum we're able to transfer from young to old. The mutator_xfer_limit constrains the transfer
+// of memory from young to old.  It does not limit young reserves.
 void ShenandoahGenerationalHeap::compute_old_generation_balance(size_t mutator_xfer_limit,
                                                                 size_t old_trashed_regions, size_t young_trashed_regions) {
   shenandoah_assert_heaplocked();
