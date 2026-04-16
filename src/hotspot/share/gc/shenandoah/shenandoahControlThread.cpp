@@ -292,7 +292,7 @@ void ShenandoahControlThread::service_concurrent_normal_cycle(GCCause::Cause cau
   }
   heap->increment_total_collections(false);
 
-  ShenandoahGCSession session(cause, heap->global_generation(), false, false);
+  ShenandoahGCSession session(cause, heap->global_generation());
 
   TraceCollectorStats tcs(heap->monitoring_support()->concurrent_collection_counters());
 
@@ -335,7 +335,7 @@ void ShenandoahControlThread::stop_service() {
 
 void ShenandoahControlThread::service_stw_full_cycle(GCCause::Cause cause) {
   ShenandoahHeap* const heap = ShenandoahHeap::heap();
-  ShenandoahGCSession session(cause, heap->global_generation(), false, false);
+  ShenandoahGCSession session(cause, heap->global_generation());
 
   heap->increment_total_collections(true);
 

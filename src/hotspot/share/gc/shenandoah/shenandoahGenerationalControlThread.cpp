@@ -404,7 +404,7 @@ void ShenandoahGenerationalControlThread::service_concurrent_old_cycle(const She
 
   switch (original_state) {
     case ShenandoahOldGeneration::FILLING: {
-      ShenandoahGCSession session(request.cause, old_generation, false, false);
+      ShenandoahGCSession session(request.cause, old_generation);
       assert(gc_mode() == servicing_old, "Filling should be servicing old");
       _allow_old_preemption.set();
       old_generation->entry_coalesce_and_fill();
@@ -450,7 +450,7 @@ void ShenandoahGenerationalControlThread::service_concurrent_old_cycle(const She
       // done by the bootstrapping young cycle.
       set_gc_mode(servicing_old);
     case ShenandoahOldGeneration::MARKING: {
-      ShenandoahGCSession session(request.cause, old_generation, false, false);
+      ShenandoahGCSession session(request.cause, old_generation);
       bool marking_complete = resume_concurrent_old_cycle(old_generation, request.cause);
       if (marking_complete) {
         assert(old_generation->state() != ShenandoahOldGeneration::MARKING, "Should not still be marking");
@@ -542,7 +542,7 @@ void ShenandoahGenerationalControlThread::service_concurrent_cycle(ShenandoahGen
   // In either case, we want to age old objects if this is an aging cycle
   maybe_set_aging_cycle();
 
-  ShenandoahGCSession session(cause, generation, false, false);
+  ShenandoahGCSession session(cause, generation);
   TraceCollectorStats tcs(_heap->monitoring_support()->concurrent_collection_counters());
 
   assert(!generation->is_old(), "Old GC takes a different control path");
@@ -619,7 +619,7 @@ bool ShenandoahGenerationalControlThread::check_cancellation_or_degen(Shenandoah
 
 void ShenandoahGenerationalControlThread::service_stw_full_cycle(GCCause::Cause cause) {
   _heap->increment_total_collections(true);
-  ShenandoahGCSession session(cause, _heap->global_generation(), false, false);
+  ShenandoahGCSession session(cause, _heap->global_generation());
   maybe_set_aging_cycle();
   ShenandoahFullGC gc;
   gc.collect(cause);
