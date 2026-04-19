@@ -34,7 +34,7 @@
                             range,                                          \
                             constraint)                                     \
                                                                             \
-  product(uint, ShenandoahAccelerationSamplePeriod, 15, EXPERIMENTAL,       \
+  product(uint, ShenandoahAccelerationSamplePeriod, 25, EXPERIMENTAL,       \
           "When at least this much time (measured in ms) has passed "       \
           "since the acceleration allocation rate was most recently "       \
           "sampled, capture another allocation rate sample for the purpose "\
