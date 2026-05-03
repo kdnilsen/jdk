@@ -202,6 +202,98 @@ public:
 
   virtual void record_phase_duration(ShenandoahMajorGCPhase p, double x, double duration) override;
 
+#ifdef KELVIN_PLANNED_ENHANCEMENTS
+  /*
+  There are too many moving pieces in this "improvement".  My plan:
+
+  1. First step, figure out what "primitive data" is needed to make effective triggering decisions in "all" circumstances.
+  2. Implement and test (with logging details and asserts) all of the primitive-data collecting routines
+  3. Implement the enhanced triggering decisions, and test on Extremem and on specjbb and on complete CI test suite.
+
+
+
+  set_anticipated_remset_words() should be based on historical precedent.
+  1. At the end of each GC cycle, remember how many words were moved into old by that GC cycle.  This includes
+     promotion by evacuation, promotion in place, and mixed evacation.  All of these words are "dirty" in the card
+     table.  This represents an increase over the "normal" remset scanning effort.  Call it extra_remset_word_count.
+  2. At the end of each mark phase, remember how many remset words were processed
+  3. Save the normal remset word count, which is the total remset words processed minus the extra words processed.
+  4. At the end of each GC, we estimate the number of remset-words by adding the "normal remset word count" to the
+     "moved-into-old-word-count. 
+
+  set_anticipated_mark_words() should be based on historical precedent.
+   (let's represent this as three independent values:
+    get_anticipated_young_live_words(): Use linear prediction of recent behavior.
+    get_anticipated_established_remset_words(): Use historical trends MAX2(average, linear prediction). 
+    get_anticipated_newly_promoted_remset_words(): The remset scan is "extra big" following a burst of promotions in
+       the previous cycle.)
+
+  1. At the end of each mark phase, remember how many promotable words were marked and how many total words were marked
+     and how many remset words were processed.  The sum of these values is the x-value that correlates with the y-value,
+     in our linear prediction model of mark time.
+  2. In non-gen mode, 0 words are promotable
+  3. Remember the young_marked_words, which is total words - (promotable words + remset_words)
+  4. Use linear prediction on "young marked words" to predict next young marked words.  For simplicity, the x-axis is gcid
+     rather than time.
+  5. At end of GC cycle, predict that the next GC cycle's mark_words is linear prediction of "young marked words" plus
+     promo potential plus normal remset word count, plus extra_remset_word_count.  (Today's promo potential is
+     "under-reported", but @kemperw is moment away from committing an improvement.)
+
+  at should_start_gc(), predict mark time and bytes_allocated_during_mark() (use acceleration when appropriate)
+  bytes_allocated_during_mark() represents the floating garbage that will have to be updated during update-refs.
+  1. I've got a problem here.  I can't predict the GC time until I know update_words.  I can't know update_words
+     until I know the time for marking.
+  2. Estimate mark_phase based on anticipated_mark_words above()
+  3. Use estimate of mark_phase time and "current" allocation rate to predict floating_garbage_words
+  4. At the end of each evacuation phase, record total_evacuated_words, promoted_evacuated_words, old_evacuated_words.  save
+     total_evacuated_words - (promoted_evacuated_words + old_evacuated_words) as typical_young_evacuated
+  5. use historical estimate of typical_young_evacuateds + promotable_words + mixed_evac_words to estimate evac time.
+  6. for young collections:
+     a. Use historical estimate of young_marked_words + floating_garbage_words + typical_remset_words + promo_evac_words
+        + promote_in_place words to calculate update time
+  7. for mixed collections
+     b. Same, but replace typical_remset_words with old_live_now - planned_old_evac
+
+
+  anticipated_update_words:
+
+  For Mutator regions, update_watermark represents the point above which it is not necessary to perform update.  We only
+  update between bottom and udpate_watermark.
+
+  For Collector and OldCollector regions, we need to update the entire region between bottom() and top().
+
+
+  At should_start_gc(), we predict update words based on:
+    a) We know if we are planning a mixed evac.  Assume mixed evac.  update words is:
+         i. anticipated_floating_garbage_introduced_by_mark(): alloc_rate * anticipated_mark_time, plus
+        ii. anticipated young live memory minus anticipated young collection set evacuation load
+            From above, I have get_anticipated_young_live_words()
+            How do I calculate anticipated_young_evacuation_words()?
+              Calculate a trend of based on history of recent young GC
+               predict_young_words_evacuated(double for_gc_start_time), based on lineaer prediction of words
+               evacuated from young by previous GC cycles.  This prediction includes evacuation to survivor space.
+               It excludes promotions by evacuation.
+           anticipated_young_evacuation_words() is MIN2(young_evac_reserve / EvacWaste, predict_young_words_evacuated()
+
+
+
+
+
+  After marking, we predict update words based on:
+
+
+  1. At the end of marking, we record how many words were allocated during mark.  Call this float_garbage_words.
+     We also count how many words were "marked" (below TAMS).  We're going to count this
+     as the total_live_words.  We also count how much of the marked memory is going to be promoted.  Call this
+     promotable_words.  Record live_words as total_live_words - promotable_words.
+  2. At the end of marking, we update our estimate of update_words.  It is total_live_words + floating_garbage_words.
+     Refine our estimate of remaining GC time based on updated awarness of update_words.
+
+
+
+  */
+#endif
+
   void record_mark_end(double now, size_t marked_words) override;
   // In non-generational mode, supply pip_words as zero
   void record_evac_end(double now, size_t evacuated_words, size_t pip_words) override;
@@ -315,6 +407,10 @@ protected:
 
   inline size_t get_anticipated_mark_words() {
     return _anticipated_mark_words;
+  }
+
+  inline void set_anticipated_mark_words(size_t words) {
+    _anticipated_mark_words = words;
   }
 
   inline void set_anticipated_evac_words(size_t words) {
