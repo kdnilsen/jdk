@@ -311,8 +311,8 @@ public:
 };
 
 //--------------------------FlatArrayCheckNode---------------------------------
-// Returns true if one of the input array objects or array klass ptrs (there
-// can be multiple) is flat.
+// Returns true if one of the inputs is flat. There can be multiple inputs, but
+// all must be of the same kind: either array objects or array klass ptrs.
 class FlatArrayCheckNode : public CmpNode {
 public:
   enum {
@@ -473,6 +473,7 @@ public:
   NegNode(Node* in1) : Node(nullptr, in1) {
     init_class_id(Class_Neg);
   }
+  virtual Node* Identity(PhaseGVN* phase);
 };
 
 //------------------------------NegINode---------------------------------------
@@ -603,6 +604,7 @@ class ReverseBytesNode : public Node {
 public:
   ReverseBytesNode(Node* in) : Node(nullptr, in) {}
   virtual const Type* Value(PhaseGVN* phase) const;
+  virtual Node* Identity(PhaseGVN* phase);
 };
 //-------------------------------ReverseBytesINode--------------------------------
 // reverse bytes of an integer
